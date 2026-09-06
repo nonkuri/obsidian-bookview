@@ -4,16 +4,24 @@ import { disposePdfJs, initPdfJs } from "./pdfjs";
 import { BookPdfView, VIEW_TYPE_BOOKVIEW_PDF } from "./view";
 import type { DocState } from "./types";
 
-/** Obsidian's view registry is internal, but it is the only way to hand `.pdf` back. */
+/**
+ * Obsidian's view registry is internal, but taking over `.pdf` requires it:
+ * `Plugin.registerExtensions()` throws outright when the extension already has
+ * a handler — and `.pdf` always does, because the core PDF viewer claims it.
+ * The extension has to be released first, and put back when we let go.
+ */
 interface ViewRegistryLike {
+  registerExtensions(extensions: string[], viewType: string): void;
   unregisterExtensions(extensions: string[]): void;
-  typeByExtension: Record<string, string>;
+  getTypeByExtension(extension: string): string | undefined;
 }
 
 export default class BookViewPlugin extends Plugin {
   settings: BookViewSettings = { ...DEFAULT_SETTINGS };
 
   private extensionRegistered = false;
+  /** What handled `.pdf` before we took it over, so unload can put it back. */
+  private previousPdfViewType: string | null = null;
   private saveFileStates = debounce(() => void this.saveSettings(), 800, false);
 
   async onload(): Promise<void> {
@@ -87,6 +95,9 @@ export default class BookViewPlugin extends Plugin {
   }
 
   onunload(): void {
+    // Plugin.registerExtensions() would only unregister on unload, leaving .pdf
+    // with no handler at all, so the swap is undone by hand instead.
+    this.releasePdfExtension();
     this.saveFileStates.cancel();
     disposePdfJs();
   }
@@ -141,31 +152,63 @@ export default class BookViewPlugin extends Plugin {
   // ------------------------------------------------------------- integration
 
   applyPdfExtensionOverride(): void {
-    const want = this.settings.overridePdfViewer;
-    if (want === this.extensionRegistered) return;
+    if (this.settings.overridePdfViewer) this.claimPdfExtension();
+    else this.releasePdfExtension();
+  }
 
-    if (want) {
-      try {
-        this.registerExtensions(["pdf"], VIEW_TYPE_BOOKVIEW_PDF);
-        this.extensionRegistered = true;
-      } catch (err) {
-        new Notice("PDF の関連付けに失敗しました。別のプラグインが .pdf を使っている可能性があります。");
-        console.error("BookView: registerExtensions failed", err);
-      }
+  private viewRegistry(): ViewRegistryLike | null {
+    const registry = (this.app as unknown as { viewRegistry?: ViewRegistryLike }).viewRegistry;
+    if (
+      registry &&
+      typeof registry.registerExtensions === "function" &&
+      typeof registry.unregisterExtensions === "function" &&
+      typeof registry.getTypeByExtension === "function"
+    ) {
+      return registry;
+    }
+    return null;
+  }
+
+  private claimPdfExtension(): void {
+    if (this.extensionRegistered) return;
+    const registry = this.viewRegistry();
+    if (!registry) {
+      new Notice("BookView: PDF の関連付けができませんでした（Obsidian の内部 API が変わった可能性があります）。");
       return;
     }
-
-    const registry = (this.app as unknown as { viewRegistry?: ViewRegistryLike }).viewRegistry;
-    if (registry && typeof registry.unregisterExtensions === "function") {
-      try {
-        registry.unregisterExtensions(["pdf"]);
-        this.extensionRegistered = false;
-        return;
-      } catch (err) {
-        console.error("BookView: unregisterExtensions failed", err);
-      }
+    const current = registry.getTypeByExtension("pdf");
+    if (current === VIEW_TYPE_BOOKVIEW_PDF) {
+      this.extensionRegistered = true;
+      return;
     }
-    new Notice("設定を反映するには Obsidian を再読み込みしてください。");
+    try {
+      // Whatever held `.pdf` (normally the core viewer) is restored on unload.
+      this.previousPdfViewType = current ?? null;
+      if (current !== undefined) registry.unregisterExtensions(["pdf"]);
+      registry.registerExtensions(["pdf"], VIEW_TYPE_BOOKVIEW_PDF);
+      this.extensionRegistered = true;
+    } catch (err) {
+      console.error("BookView: could not claim the .pdf extension", err);
+      new Notice("BookView: PDF の関連付けに失敗しました。コンソールを確認してください。");
+    }
+  }
+
+  private releasePdfExtension(): void {
+    if (!this.extensionRegistered) return;
+    const registry = this.viewRegistry();
+    if (!registry) return;
+    try {
+      if (registry.getTypeByExtension("pdf") === VIEW_TYPE_BOOKVIEW_PDF) {
+        registry.unregisterExtensions(["pdf"]);
+      }
+      if (this.previousPdfViewType && registry.getTypeByExtension("pdf") === undefined) {
+        registry.registerExtensions(["pdf"], this.previousPdfViewType);
+      }
+    } catch (err) {
+      console.error("BookView: could not release the .pdf extension", err);
+    }
+    this.previousPdfViewType = null;
+    this.extensionRegistered = false;
   }
 
   private async openInBookView(file: TFile, newLeaf: boolean): Promise<void> {

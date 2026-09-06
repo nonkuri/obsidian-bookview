@@ -16,7 +16,10 @@ function applyInfo(el: HTMLElement, info?: ElInfo) {
   return el;
 }
 
-const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+// Guarded so this stub can also be imported from Node (registry-test.mjs).
+const proto = (typeof HTMLElement === "undefined"
+  ? {}
+  : HTMLElement.prototype) as unknown as Record<string, unknown>;
 
 proto.createEl = function (tag: string, info?: ElInfo) {
   const el = document.createElement(tag);
@@ -222,3 +225,26 @@ export class Setting {
   addSlider(): this { return this; }
   addButton(): this { return this; }
 }
+
+/** Minimal Plugin base, enough to construct the real plugin class in Node. */
+export class Plugin {
+  app: any;
+  manifest: any;
+  private data: unknown = null;
+  constructor(app: unknown, manifest: unknown) {
+    this.app = app;
+    this.manifest = manifest;
+  }
+  register(_cb: () => void): void {}
+  registerEvent(_ref: unknown): void {}
+  registerView(_type: string, _creator: unknown): void {}
+  registerExtensions(_exts: string[], _type: string): void {
+    throw new Error('registerExtensions: the real plugin must not use this helper');
+  }
+  addCommand(cmd: unknown): unknown { return cmd; }
+  addSettingTab(_tab: unknown): void {}
+  async loadData(): Promise<unknown> { return this.data; }
+  async saveData(data: unknown): Promise<void> { this.data = data; }
+}
+
+export class EventRef {}

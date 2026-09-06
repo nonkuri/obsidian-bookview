@@ -10,7 +10,9 @@
     "deploy": "node scripts/deploy.mjs",
     "test:pdf": "node test/make-pdf.mjs",
     "test:build": "node test/build-harness.mjs",
-    "test:serve": "node test/serve.mjs"
+    "test:serve": "node test/serve.mjs",
+    "test:registry": "node test/registry-test.mjs",
+    "test": "node test/registry-test.mjs"
   },
   "keywords": [
     "obsidian",
