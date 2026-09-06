@@ -1,0 +1,71 @@
+<!doctype html>
+<html class="theme-light">
+  <head>
+    <meta charset="utf-8" />
+    <title>BookView harness</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <style>
+      /* A very small subset of Obsidian's theme variables. */
+      :root {
+        --background-primary: #fff;
+        --background-secondary: #f2f3f5;
+        --background-modifier-border: #ddd;
+        --background-modifier-hover: #e6e6e6;
+        --background-modifier-border-focus: #7b8ff7;
+        --text-normal: #222;
+        --text-muted: #777;
+        --text-accent: #5b6ee1;
+        --font-ui-small: 13px;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+        color: var(--text-normal);
+      }
+      #host,
+      .workspace-leaf-content,
+      .view-content {
+        height: 100%;
+      }
+      .workspace-leaf-content > div:first-child {
+        display: none;
+      }
+      #host {
+        height: 100vh;
+      }
+      button {
+        font: inherit;
+        border: none;
+        background: transparent;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .stub-notice {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        z-index: 10;
+        padding: 6px 10px;
+        background: #333;
+        color: #fff;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="host"></div>
+    <script>
+      // Harness-only: a hidden/occluded tab throttles requestAnimationFrame to a
+      // stop, which stalls the pdf.js render loop and makes the page look frozen.
+      window.requestAnimationFrame = function (cb) {
+        return window.setTimeout(function () {
+          cb(performance.now());
+        }, 0);
+      };
+    </script>
+    <script src="./harness.js"></script>
+  </body>
+</html>

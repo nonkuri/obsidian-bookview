@@ -1,0 +1,8 @@
+node_modules/
+main.js
+main.js.map
+*.tgz
+.DS_Store
+data.json
+test/harness.js
+test/sample.pdf

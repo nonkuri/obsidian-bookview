@@ -1,0 +1,175 @@
+/* ---------------------------------------------------------------- layout -- */
+
+.bookview-view-content {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.bookview-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* --------------------------------------------------------------- toolbar -- */
+
+.bookview-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  flex: 0 0 auto;
+}
+
+.bookview-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.bookview-toolbar-group + .bookview-toolbar-group {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.bookview-toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+
+.bookview-toolbar-spacer + .bookview-toolbar-group {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+.bookview-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  box-shadow: none;
+}
+
+.bookview-btn.is-active {
+  color: var(--text-accent);
+  background-color: var(--background-modifier-hover);
+}
+
+.bookview-btn.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.bookview-pagebox {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0 2px;
+}
+
+.bookview-page-input {
+  width: 5em;
+  padding: 2px 4px;
+  text-align: center;
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.bookview-page-total {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bookview-zoom-label {
+  min-width: 4.5em;
+  padding: 2px 6px;
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bookview-zoom-label:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ----------------------------------------------------------------- stage -- */
+
+.bookview-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  /* Reserve the scrollbar track so the fit calculation cannot oscillate as
+     scrollbars appear and disappear. */
+  scrollbar-gutter: stable;
+  padding: 16px;
+  background-color: var(--background-secondary);
+  outline: none;
+}
+
+.bookview-stage:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* `margin: auto` rather than `justify-content: center`, so that an oversized
+   spread stays reachable at both ends when the stage scrolls. */
+.bookview-spread {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: auto;
+}
+
+.bookview-spread.is-rtl {
+  flex-direction: row-reverse;
+}
+
+.bookview-page {
+  line-height: 0;
+  background-color: #fff;
+}
+
+.bookview-spread.is-shadow .bookview-page:not(.bookview-page-spacer) {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.bookview-page-spacer {
+  background-color: transparent;
+}
+
+.bookview-canvas {
+  display: block;
+}
+
+.theme-dark .bookview-spread.is-inverted .bookview-page {
+  background-color: #000;
+}
+
+.theme-dark .bookview-spread.is-inverted .bookview-canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.bookview-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  background-color: var(--background-secondary);
+}

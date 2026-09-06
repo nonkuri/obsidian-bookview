@@ -1,0 +1,9 @@
+{
+  "id": "bookview",
+  "name": "BookView PDF",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "A PDF viewer with two-page spread support for right-to-left bound (vertical Japanese) books, including an Acrobat-style cover page option.",
+  "author": "nonkuri",
+  "isDesktopOnly": false
+}
