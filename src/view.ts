@@ -775,6 +775,11 @@ export class BookPdfView extends FileView {
   /**
    * Honours the layout the PDF itself asks for: `/ViewerPreferences /Direction`
    * for the binding side, `/PageLayout` for spread and cover.
+   *
+   * Only ever turns the spread *on*. `/PageLayout /SinglePage` and `/OneColumn`
+   * are what nearly every producer writes by default, so treating them as a
+   * deliberate request would quietly cancel the reader's own preference and the
+   * plugin would never show a spread at all.
    */
   private async applyDocumentPreferences(doc: PDFDocumentProxy): Promise<void> {
     try {
@@ -799,10 +804,6 @@ export class BookPdfView extends FileView {
         case "TwoColumnLeft":
           this.docState.spread = "spread";
           this.docState.cover = false;
-          break;
-        case "SinglePage":
-        case "OneColumn":
-          this.docState.spread = "single";
           break;
         default:
           break;

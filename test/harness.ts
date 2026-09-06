@@ -27,7 +27,8 @@ const fakePlugin = {
 async function main() {
   initPdfJs();
 
-  const response = await fetch("./sample.pdf");
+  const name = new URLSearchParams(location.search).get("pdf") ?? "sample.pdf";
+  const response = await fetch("./" + name);
   const buffer = await response.arrayBuffer();
 
   const view = new BookPdfView(new WorkspaceLeaf(), fakePlugin as never);

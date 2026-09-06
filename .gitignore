@@ -6,3 +6,5 @@ main.js.map
 data.json
 test/harness.js
 test/sample.pdf
+test/onecolumn.pdf
+test/plain.pdf

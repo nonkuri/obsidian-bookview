@@ -1,11 +1,22 @@
-// Generates test/sample.pdf: 5 A5 pages, right-to-left binding declared in
-// /ViewerPreferences, plus Japanese text through the predefined UniJIS-UCS2-H
-// CMap so the inlined CMap tables actually get exercised.
+// Generates a test PDF: 5 A5 pages, plus Japanese text through the predefined
+// UniJIS-UCS2-H CMap so the inlined CMap tables actually get exercised.
+//
+//   node test/make-pdf.mjs                                  -> sample.pdf, /TwoPageRight + R2L
+//   node test/make-pdf.mjs --layout=OneColumn --direction=  -> what most real PDFs declare
+//   node test/make-pdf.mjs --layout= --out=plain.pdf        -> no layout hints at all
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+const arg = (name, fallback) => {
+  const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
+  return hit === undefined ? fallback : hit.slice(name.length + 3);
+};
+const LAYOUT = arg("layout", "TwoPageRight");
+const DIRECTION = arg("direction", "R2L");
+const OUT = arg("out", "sample.pdf");
 
 const PAGES = 5;
 const W = 420;
@@ -34,8 +45,10 @@ const pageNums = [];
 for (let i = 0; i < PAGES; i++) pageNums.push(firstPageNum + i * 2);
 
 add(
-  `<< /Type /Catalog /Pages ${pagesNum} 0 R /PageLayout /TwoPageRight ` +
-    `/ViewerPreferences << /Direction /R2L >> >>`
+  `<< /Type /Catalog /Pages ${pagesNum} 0 R` +
+    (LAYOUT ? ` /PageLayout /${LAYOUT}` : "") +
+    (DIRECTION ? ` /ViewerPreferences << /Direction /${DIRECTION} >>` : "") +
+    ` >>`
 );
 add(
   `<< /Type /Pages /Count ${PAGES} /Kids [${pageNums.map((n) => `${n} 0 R`).join(" ")}] ` +
@@ -82,6 +95,6 @@ for (let i = 1; i <= objects.length; i++) {
 }
 pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogNum} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
-const out = path.join(here, "sample.pdf");
+const out = path.join(here, OUT);
 await fs.writeFile(out, Buffer.from(pdf, "latin1"));
-console.log(`wrote ${out} (${PAGES} pages)`);
+console.log(`wrote ${out} (${PAGES} pages, PageLayout=${LAYOUT || "none"}, Direction=${DIRECTION || "none"})`);

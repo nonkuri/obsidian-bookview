@@ -103,7 +103,8 @@ export class BookViewSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Detect layout from the PDF")
       .setDesc(
-        "PDF 自身の綴じ方向（/ViewerPreferences /Direction）とページレイアウト（/PageLayout）が指定されていれば、それを上記の既定値より優先します。"
+        "PDF 自身が綴じ方向（/ViewerPreferences /Direction）や見開き（/PageLayout の TwoPage…／TwoColumn…）を指定していれば、それを上記の既定値より優先します。" +
+          "単ページ指定（SinglePage・OneColumn）はほぼすべての PDF が既定で書き込むだけの値なので無視します。"
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.autoDetect).onChange(async (v) => {
