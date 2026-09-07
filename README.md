@@ -106,6 +106,10 @@ BookView*) and reach BookView only when you want it.
 | `+` / `-` | Larger / smaller type |
 | `T` | Toggle the contents panel |
 
+- The mouse wheel turns pages, and a sideways wheel follows the binding. In
+  scrolled reading it is left alone to scroll.
+- `Ctrl` / `Cmd` + wheel changes the type size.
+
 If a book opens but does not appear, the command **Copy EPUB diagnostics** puts
 the renderer's measurements on the clipboard, ready to paste into a bug report.
 

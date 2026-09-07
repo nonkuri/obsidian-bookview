@@ -27,6 +27,8 @@ export class BookEpubView extends FileView {
   private lastRelocate: RelocateDetail | null = null;
   /** Whether the book is set vertically, read back off the first rendered section. */
   private vertical = false;
+  /** When the wheel last turned a page, so one flick does not turn a dozen. */
+  private wheelCooldown = 0;
 
   private rootEl!: HTMLElement;
   private toolbarEl!: HTMLElement;
@@ -196,6 +198,7 @@ export class BookEpubView extends FileView {
       // Key events do not cross an iframe boundary, so every section gets its
       // own handler. It dies with the document.
       doc.addEventListener("keydown", (e) => this.onKeyDown(e));
+      doc.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
       // Only the book's own stylesheet knows whether it is set vertically, so
       // the answer has to be read back off a rendered document.
       const mode = doc.defaultView?.getComputedStyle(doc.body).writingMode ?? "";
@@ -266,6 +269,7 @@ export class BookEpubView extends FileView {
     this.registerDomEvent(this.outlineEl, "click", (evt) => this.onOutlineClick(evt));
     this.registerDomEvent(this.outlineEl, "keydown", (evt) => this.onOutlineKeyDown(evt));
     this.registerDomEvent(this.stageEl, "keydown", (evt) => this.onKeyDown(evt));
+    this.registerDomEvent(this.stageEl, "wheel", (evt) => this.onWheel(evt), { passive: false });
 
     // The book's own light or dark rendering is pinned to the vault's theme, so
     // switching theme has to reach into the iframe.
@@ -572,6 +576,39 @@ export class BookEpubView extends FileView {
 
   getEpubState(): Readonly<EpubState> {
     return this.state;
+  }
+
+  /**
+   * The wheel turns pages, the way it does in the PDF view. Nothing in the
+   * renderer handles it — foliate only listens for touch — and a wheel event
+   * over the book fires inside its iframe, so this is attached to each section
+   * as it loads as well as to the stage around it.
+   */
+  private onWheel(evt: WheelEvent): void {
+    if (evt.ctrlKey || evt.metaKey) {
+      evt.preventDefault();
+      this.stepFontScale(evt.deltaY < 0 ? 1 : -1);
+      return;
+    }
+    // Scrolled reading is scrolling; leave the wheel to do what it says.
+    if (this.state.flow === "scrolled") return;
+
+    // A sideways wheel goes through the binding — `goLeft` is "next" in a
+    // right-bound book — while a vertical one keeps the plain down-is-onward
+    // sense whichever way the book runs.
+    const horizontal = Math.abs(evt.deltaX) > Math.abs(evt.deltaY);
+    const delta = horizontal ? evt.deltaX : evt.deltaY;
+    if (Math.abs(delta) < 4) return;
+
+    // A single flick of a trackpad is a burst of events, and without this it
+    // would turn a dozen pages.
+    const now = Date.now();
+    evt.preventDefault();
+    if (now - this.wheelCooldown < 220) return;
+    this.wheelCooldown = now;
+
+    if (horizontal) this.turnTowards(delta > 0 ? "right" : "left");
+    else this.turn(delta > 0 ? 1 : -1);
   }
 
   private onKeyDown(evt: KeyboardEvent): void {
