@@ -5,7 +5,15 @@ import tseslint from "typescript-eslint";
 // first: `npm run lint`.
 export default tseslint.config(
   {
-    ignores: ["main.js", "test/harness.js", "scripts/**", "esbuild.config.mjs", "version-bump.mjs"],
+    ignores: [
+      "main.js",
+      "test/harness.js",
+      "scripts/**",
+      // Vendored verbatim; our own typings alongside it are checked by tsc.
+      "src/vendor/**",
+      "esbuild.config.mjs",
+      "version-bump.mjs",
+    ],
   },
   ...obsidianmd.configs.recommended,
   {

@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.pdf binary
+*.epub binary
+# Copied verbatim from upstream; not this project's code.
+src/vendor/** linguist-vendored

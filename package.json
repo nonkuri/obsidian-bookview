@@ -1,7 +1,7 @@
 {
   "name": "obsidian-bookview",
   "version": "1.0.2",
-  "description": "PDF viewer for Obsidian with two-page spread support for right-to-left (vertical Japanese) books.",
+  "description": "PDF and EPUB viewer for Obsidian with two-page spread support for right-to-left (vertical Japanese) books.",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -9,6 +9,7 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "deploy": "node scripts/deploy.mjs",
     "test:pdf": "node test/make-pdf.mjs",
+    "test:epub": "node test/make-epub.mjs && node test/make-epub.mjs --vertical= --out=horizontal.epub",
     "test:build": "node test/build-harness.mjs",
     "test:serve": "node test/serve.mjs",
     "test:registry": "node test/registry-test.mjs",
@@ -19,6 +20,7 @@
   "keywords": [
     "obsidian",
     "pdf",
+    "epub",
     "vertical-writing",
     "spread"
   ],

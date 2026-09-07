@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type BookViewPlugin from "./main";
-import type { DocState, FitMode, SpreadMode } from "./types";
+import type { DocState, EpubState, FitMode, FlowMode, SpreadMode } from "./types";
 
 export interface BookViewSettings {
   defaultSpread: SpreadMode;
@@ -18,9 +18,27 @@ export interface BookViewSettings {
   rememberPerFile: boolean;
   /** Make BookView the handler for `.pdf` files instead of the built-in viewer. */
   overridePdfViewer: boolean;
+  /**
+   * Make BookView the handler for `.epub` files. Obsidian has no EPUB viewer of
+   * its own, but another plugin may already have claimed the extension.
+   */
+  overrideEpubViewer: boolean;
   /** Upper bound on the canvas backing-store scale; higher is sharper but heavier. */
   maxPixelRatio: number;
   fileStates: Record<string, DocState>;
+
+  // --- EPUB. Kept apart from the PDF settings above because almost nothing
+  // carries over: a reflowable book has no pages to fit or rotate.
+  defaultFlow: FlowMode;
+  /** Columns per screen in horizontal writing. Vertical writing always fills the width. */
+  defaultColumns: number;
+  defaultFontScale: number;
+  /** Space between columns, as a percentage of the page. */
+  epubGap: number;
+  /** Cap on the measure, in pixels, so a wide pane does not produce unreadable lines. */
+  epubMaxLineLength: number;
+  epubLineHeight: number;
+  epubStates: Record<string, EpubState>;
 }
 
 export const DEFAULT_SETTINGS: BookViewSettings = {
@@ -35,8 +53,17 @@ export const DEFAULT_SETTINGS: BookViewSettings = {
   invertInDarkMode: false,
   rememberPerFile: true,
   overridePdfViewer: true,
+  overrideEpubViewer: true,
   maxPixelRatio: 2,
   fileStates: {},
+
+  defaultFlow: "paginated",
+  defaultColumns: 2,
+  defaultFontScale: 100,
+  epubGap: 6,
+  epubMaxLineLength: 720,
+  epubLineHeight: 1.7,
+  epubStates: {},
 };
 
 export class BookViewSettingTab extends PluginSettingTab {
@@ -160,7 +187,10 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Invert colors in dark mode")
-      .setDesc("Invert the colors of the rendered page under a dark theme. Suits documents on white.")
+      .setDesc(
+        "Invert the colors of the rendered page, or of an EPUB's own styling, under a dark theme. " +
+          "Suits documents on white."
+      )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.invertInDarkMode).onChange(async (v) => {
           this.plugin.settings.invertInDarkMode = v;
@@ -186,6 +216,94 @@ export class BookViewSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl).setName("Defaults for newly opened EPUBs").setHeading();
+
+    new Setting(containerEl)
+      .setName("Reading mode")
+      .setDesc("Turn pages like a book, or scroll continuously like a web page.")
+      .addDropdown((d) =>
+        d
+          .addOption("paginated", "Paginated")
+          .addOption("scrolled", "Scrolled")
+          .setValue(this.plugin.settings.defaultFlow)
+          .onChange(async (v) => {
+            this.plugin.settings.defaultFlow = v as FlowMode;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Two columns")
+      .setDesc(
+        "Show two columns side by side in horizontally written books, the way a printed page " +
+          "falls open. Vertically written Japanese is unaffected: its text already runs right to " +
+          "left across the whole width, which is the spread."
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.defaultColumns > 1).onChange(async (v) => {
+          this.plugin.settings.defaultColumns = v ? 2 : 1;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Type size")
+      .setDesc("Starting size for the book's text, as a percentage of its own.")
+      .addSlider((s) =>
+        s
+          .setLimits(70, 200, 10)
+          .setValue(this.plugin.settings.defaultFontScale)
+          .onChange(async (v) => {
+            this.plugin.settings.defaultFontScale = v;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Line length")
+      .setDesc(
+        "Upper bound on the measure, in pixels. Without one, a wide pane produces lines too long " +
+          "to read comfortably."
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(400, 1200, 20)
+          .setValue(this.plugin.settings.epubMaxLineLength)
+          .onChange(async (v) => {
+            this.plugin.settings.epubMaxLineLength = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Line spacing")
+      .setDesc("Leading for body text, as a multiple of the type size.")
+      .addSlider((s) =>
+        s
+          .setLimits(1.2, 2.4, 0.1)
+          .setValue(this.plugin.settings.epubLineHeight)
+          .onChange(async (v) => {
+            this.plugin.settings.epubLineHeight = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Column gap")
+      .setDesc("Space between columns, as a percentage of the page.")
+      .addSlider((s) =>
+        s
+          .setLimits(0, 20, 1)
+          .setValue(this.plugin.settings.epubGap)
+          .onChange(async (v) => {
+            this.plugin.settings.epubGap = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
     new Setting(containerEl).setName("Behavior").setHeading();
 
     new Setting(containerEl)
@@ -198,15 +316,30 @@ export class BookViewSettingTab extends PluginSettingTab {
         t.setValue(this.plugin.settings.overridePdfViewer).onChange(async (v) => {
           this.plugin.settings.overridePdfViewer = v;
           await this.plugin.saveSettings();
-          this.plugin.applyPdfExtensionOverride();
+          this.plugin.applyExtensionOverrides();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Open EPUB files in BookView")
+      .setDesc(
+        "Obsidian cannot open EPUBs on its own, so this is normally what you want. Turn it off to " +
+          "leave the extension to another plugin that handles it; whichever plugin held it before " +
+          "gets it back when BookView is disabled."
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.overrideEpubViewer).onChange(async (v) => {
+          this.plugin.settings.overrideEpubViewer = v;
+          await this.plugin.saveSettings();
+          this.plugin.applyExtensionOverrides();
         })
       );
 
     new Setting(containerEl)
       .setName("Remember settings per file")
       .setDesc(
-        "Store the binding direction, spread mode, and current page for each file, and restore them " +
-          "the next time it is opened."
+        "Store the binding direction, spread mode, and current page of each PDF, and the reading " +
+          "position and type size of each EPUB, and restore them the next time the file is opened."
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.rememberPerFile).onChange(async (v) => {
@@ -215,7 +348,9 @@ export class BookViewSettingTab extends PluginSettingTab {
         })
       );
 
-    const remembered = Object.keys(this.plugin.settings.fileStates).length;
+    const remembered =
+      Object.keys(this.plugin.settings.fileStates).length +
+      Object.keys(this.plugin.settings.epubStates).length;
     new Setting(containerEl)
       .setName("Clear remembered files")
       .setDesc(`Currently remembering ${remembered} file${remembered === 1 ? "" : "s"}.`)
@@ -226,6 +361,7 @@ export class BookViewSettingTab extends PluginSettingTab {
           .setDisabled(remembered === 0)
           .onClick(async () => {
             this.plugin.settings.fileStates = {};
+            this.plugin.settings.epubStates = {};
             await this.plugin.saveSettings();
             this.display();
           })

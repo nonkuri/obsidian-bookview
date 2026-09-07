@@ -1,6 +1,6 @@
 /**
  * A stand-in for the `obsidian` module, just complete enough to run the real
- * BookPdfView in a plain browser page. Development-only; never bundled into
+ * views in a plain browser page. Development-only; never bundled into
  * the plugin.
  */
 
@@ -52,6 +52,9 @@ proto.removeClass = function (...cls: string[]) {
 proto.toggleClass = function (cls: string, on: boolean) {
   (this as HTMLElement).classList.toggle(cls, on);
 };
+proto.hasClass = function (cls: string) {
+  return (this as HTMLElement).classList.contains(cls);
+};
 proto.setText = function (text: string) {
   (this as HTMLElement).textContent = text;
 };
@@ -80,6 +83,9 @@ const ICON_TEXT: Record<string, string> = {
   maximize: "⛶",
   "move-horizontal": "↔",
   "rotate-cw": "↻",
+  list: "☰",
+  "columns-2": "‖",
+  "scroll-text": "≡",
 };
 
 export function setIcon(el: HTMLElement, icon: string): void {
@@ -137,9 +143,19 @@ export class WorkspaceLeaf {}
 
 export type ViewStateResult = Record<string, unknown>;
 
+/** Enough of `app.workspace` for the views to subscribe to theme changes. */
+interface WorkspaceLike {
+  on(name: string, cb: (...args: never[]) => void): EventRef;
+  offref(ref: EventRef): void;
+  onLayoutReady(cb: () => void): void;
+}
+
 export class View {
   containerEl: HTMLElement;
-  app: { vault: { readBinary(file: TFile): Promise<ArrayBuffer> } };
+  app: {
+    vault: { readBinary(file: TFile): Promise<ArrayBuffer> };
+    workspace: WorkspaceLike;
+  };
   private cleanups: Array<() => void> = [];
 
   constructor(public leaf: WorkspaceLeaf) {
@@ -149,7 +165,14 @@ export class View {
     const content = document.createElement("div");
     content.className = "view-content";
     this.containerEl.appendChild(content);
-    this.app = { vault: { readBinary: async () => new ArrayBuffer(0) } };
+    this.app = {
+      vault: { readBinary: async () => new ArrayBuffer(0) },
+      workspace: {
+        on: () => new EventRef(),
+        offref: () => undefined,
+        onLayoutReady: (cb: () => void) => cb(),
+      },
+    };
   }
 
   registerDomEvent(
@@ -165,6 +188,8 @@ export class View {
   register(cb: () => void): void {
     this.cleanups.push(cb);
   }
+
+  registerEvent(_ref: EventRef): void {}
 
   unload(): void {
     for (const cb of this.cleanups) cb();
@@ -211,7 +236,11 @@ export function debounce<T extends (...args: never[]) => void>(fn: T, wait: numb
 /* Only present so `src/settings.ts` can be imported for its DEFAULT_SETTINGS. */
 export class App {}
 export class PluginSettingTab {
-  containerEl = document.createElement("div");
+  // Guarded like `proto` above: registry-test.mjs constructs the plugin in Node,
+  // where there is no document to make an element in.
+  containerEl = (typeof document === "undefined"
+    ? ({} as HTMLElement)
+    : document.createElement("div"));
   constructor(_app: unknown, _plugin: unknown) {}
   display(): void {}
 }
@@ -238,8 +267,14 @@ export class Plugin {
   register(_cb: () => void): void {}
   registerEvent(_ref: unknown): void {}
   registerView(_type: string, _creator: unknown): void {}
-  registerExtensions(_exts: string[], _type: string): void {
-    throw new Error('registerExtensions: the real plugin must not use this helper');
+  /**
+   * Records rather than acts. `.epub` is registered through this plain helper —
+   * nothing else claims it — while `.pdf` has to go through the view registry by
+   * hand, and the registry test pins down that difference.
+   */
+  registeredExtensions: Array<{ exts: string[]; type: string }> = [];
+  registerExtensions(exts: string[], type: string): void {
+    this.registeredExtensions.push({ exts, type });
   }
   addCommand(cmd: unknown): unknown { return cmd; }
   addSettingTab(_tab: unknown): void {}

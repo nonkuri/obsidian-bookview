@@ -275,6 +275,52 @@
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* --------------------------------------------------------------------- EPUB */
+
+/* The renderer paginates against its own box, so it takes the stage whole: no
+   padding to fight over, and no scrolling of our own — turning a page is the
+   renderer's job, not the scrollbar's. */
+.bookview-stage-epub {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  /* Nothing here scrolls, so a reserved gutter would only narrow the page. */
+  scrollbar-gutter: auto;
+  background-color: var(--background-primary);
+}
+
+/* Taken out of flow deliberately. The renderer watches its own box with a
+   ResizeObserver and re-paginates whenever it changes, so that box has to be a
+   function of the pane and nothing else. Left in flow it is sized from its
+   contents — a paginated chapter is tens of thousands of pixels wide — and the
+   measurement feeds the thing being measured: the observer fires, render()
+   resizes the content, the box follows, and the loop never settles. */
+.bookview-stage-epub foliate-view {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+/* Only the book's own markup is inverted. `filter` is a part the renderer
+   exports for exactly this, and it leaves the renderer's own furniture — the
+   running heads and feet — alone. */
+.theme-dark .bookview-stage-epub.is-inverted foliate-view::part(filter) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.bookview-stage-epub foliate-view::part(head),
+.bookview-stage-epub foliate-view::part(foot) {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+/* A control the book's writing mode has taken out of play, rather than one
+   that is merely off. */
+.bookview-btn.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .bookview-message {
   position: absolute;
   inset: 0;

@@ -22,3 +22,25 @@ export interface DocState {
   /** Extra rotation in degrees, on top of the page's own /Rotate. */
   rotation: number;
 }
+
+/** Paginated like a book, or scrolled like a web page. */
+export type FlowMode = "paginated" | "scrolled";
+
+/**
+ * How one EPUB is currently being displayed. Kept apart from {@link DocState}
+ * rather than folded into it: a reflowable book has no fixed pages to number, so
+ * a position is a CFI, and there is no zoom or rotation to remember — the reader
+ * changes the type size instead.
+ */
+export interface EpubState {
+  /** EPUB CFI of the reading position, or `null` before the book has been read. */
+  cfi: string | null;
+  flow: FlowMode;
+  /**
+   * Columns per screen in horizontal writing. Vertical writing ignores it: the
+   * text already runs right to left across the full width, which is the spread.
+   */
+  columns: number;
+  /** Type size as a percentage of the reader's default. */
+  fontScale: number;
+}

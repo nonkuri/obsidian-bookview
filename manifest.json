@@ -3,7 +3,7 @@
   "name": "BookView",
   "version": "1.0.2",
   "minAppVersion": "1.7.2",
-  "description": "A PDF viewer with two-page spread support for right-to-left bound (vertical Japanese) books, including an Acrobat-style cover page option.",
+  "description": "A PDF and EPUB reader with two-page spread support for right-to-left bound (vertical Japanese) books, including an Acrobat-style cover page option.",
   "author": "nonkuri",
   "authorUrl": "https://github.com/nonkuri",
   "isDesktopOnly": false

@@ -4,6 +4,7 @@ import { createRequire } from "module";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { foliatePlugins } from "../scripts/foliate-build.mjs";
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,7 @@ await esbuild.build({
   target: "es2022",
   sourcemap: "inline",
   outfile: path.join(here, "harness.js"),
-  plugins: [inlineAssets],
+  plugins: [inlineAssets, ...foliatePlugins],
   alias: { obsidian: path.join(here, "obsidian.ts") },
   logLevel: "info",
 });

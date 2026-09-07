@@ -3,6 +3,7 @@ import process from "process";
 import { builtinModules, createRequire } from "module";
 import fs from "fs/promises";
 import path from "path";
+import { foliatePlugins } from "./scripts/foliate-build.mjs";
 
 const require = createRequire(import.meta.url);
 const prod = process.argv[2] === "production";
@@ -13,7 +14,9 @@ if you want to view the source, visit the plugin's repository
 
 This bundle includes pdf.js (https://github.com/mozilla/pdf.js),
 Copyright Mozilla Foundation and contributors, licensed under the
-Apache License 2.0. See THIRD_PARTY_NOTICES.md.
+Apache License 2.0, and foliate-js (https://github.com/johnfactotum/foliate-js),
+Copyright John Factotum, licensed under the MIT License, which itself bundles
+zip.js and fflate. See THIRD_PARTY_NOTICES.md.
 */
 `;
 
@@ -59,7 +62,7 @@ const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["src/main.ts"],
   bundle: true,
-  plugins: [inlineAssets],
+  plugins: [inlineAssets, ...foliatePlugins],
   external: [
     "obsidian",
     "electron",
@@ -88,6 +91,18 @@ const context = await esbuild.context({
 
 if (prod) {
   await context.rebuild();
+  // A bare `customElements.define()` means a vendored module defines an element
+  // the build-time guard did not rewrite, and BookView would then load exactly
+  // once per Obsidian window: the second enable throws before onload() runs and
+  // takes the whole plugin down. Cheap to check, expensive to ship.
+  const bundle = await fs.readFile("main.js", "utf8");
+  if (bundle.includes("customElements.define(")) {
+    console.error(
+      "Build failed: an unguarded customElements.define() reached main.js. " +
+        "See guardFoliateCustomElements in scripts/foliate-build.mjs."
+    );
+    process.exit(1);
+  }
   process.exit(0);
 } else {
   await context.watch();
