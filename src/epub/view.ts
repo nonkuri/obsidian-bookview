@@ -29,6 +29,8 @@ export class BookEpubView extends FileView {
   private vertical = false;
   /** When the wheel last turned a page, so one flick does not turn a dozen. */
   private wheelCooldown = 0;
+  /** The last few wheel events and what became of them, for diagnostics. */
+  private recentWheel: Record<string, unknown>[] = [];
 
   private rootEl!: HTMLElement;
   private toolbarEl!: HTMLElement;
@@ -506,6 +508,7 @@ export class BookEpubView extends FileView {
           }
         : null,
       stage: box(this.stageEl),
+      wheel: this.recentWheel.slice(),
     };
 
     const reader = this.reader;
@@ -591,24 +594,58 @@ export class BookEpubView extends FileView {
       return;
     }
     // Scrolled reading is scrolling; leave the wheel to do what it says.
-    if (this.state.flow === "scrolled") return;
+    if (this.state.flow === "scrolled") {
+      this.noteWheel(evt, "scrolled: left alone");
+      return;
+    }
 
     // A sideways wheel goes through the binding — `goLeft` is "next" in a
     // right-bound book — while a vertical one keeps the plain down-is-onward
     // sense whichever way the book runs.
     const horizontal = Math.abs(evt.deltaX) > Math.abs(evt.deltaY);
     const delta = horizontal ? evt.deltaX : evt.deltaY;
-    if (Math.abs(delta) < 4) return;
+    // A wheel may report its delta in lines or pages rather than pixels, and one
+    // line is a perfectly ordinary `1`. Judging that against a pixel threshold
+    // would throw the event away.
+    const threshold = evt.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 4 : 0.5;
+    if (Math.abs(delta) < threshold) {
+      this.noteWheel(evt, "below threshold");
+      return;
+    }
 
     // A single flick of a trackpad is a burst of events, and without this it
     // would turn a dozen pages.
     const now = Date.now();
     evt.preventDefault();
-    if (now - this.wheelCooldown < 220) return;
+    if (now - this.wheelCooldown < 220) {
+      this.noteWheel(evt, "within cooldown");
+      return;
+    }
     this.wheelCooldown = now;
 
-    if (horizontal) this.turnTowards(delta > 0 ? "right" : "left");
-    else this.turn(delta > 0 ? 1 : -1);
+    if (horizontal) {
+      this.noteWheel(evt, delta > 0 ? "goRight" : "goLeft");
+      this.turnTowards(delta > 0 ? "right" : "left");
+    } else {
+      this.noteWheel(evt, delta > 0 ? "next" : "prev");
+      this.turn(delta > 0 ? 1 : -1);
+    }
+  }
+
+  /** Keeps the last few wheel events, so `collectDiagnostics` can show them. */
+  private noteWheel(evt: WheelEvent, outcome: string): void {
+    // The book lives in an iframe, so its elements come from another realm and
+    // `instanceof Element` is false for every one of them. Ask for the tag.
+    const tag = (evt.target as { tagName?: unknown } | null)?.tagName;
+    this.recentWheel.push({
+      dx: Math.round(evt.deltaX * 100) / 100,
+      dy: Math.round(evt.deltaY * 100) / 100,
+      mode: ["pixel", "line", "page"][evt.deltaMode] ?? String(evt.deltaMode),
+      on: typeof tag === "string" ? tag.toLowerCase() : String(evt.target),
+      inBook: evt.view !== this.viewWin,
+      outcome,
+    });
+    if (this.recentWheel.length > 8) this.recentWheel.shift();
   }
 
   private onKeyDown(evt: KeyboardEvent): void {
