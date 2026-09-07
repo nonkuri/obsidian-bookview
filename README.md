@@ -19,9 +19,11 @@ document's outline in the side panel.*
 ![An English book, bound on the left](screenshot/horizontal-left-bound.png)
 
 *The same viewer on a left-bound English book, which BookView recognises on its
-own.*
+own. Both screenshots show the PDF side; EPUBs get a reader of their own.*
 
 ## Features
+
+### PDF
 
 - **Two-page spread or single page**, switchable at any time.
 - **Right-to-left or left-to-right binding.** With right-to-left binding the
@@ -40,21 +42,31 @@ own.*
   open right-bound, and a document with none of those opens left-bound. What
   stays ambiguous — horizontally set Japanese, or a scan with no text at all —
   keeps whichever default you set.
-- **Outline panel.** The document's own outline (its bookmarks) is shown as a
-  collapsible tree; clicking an entry jumps to its page, and the entry covering
-  the current page is highlighted. The panel is empty for PDFs that carry no
-  outline.
 - **Zoom and rotate.** Fit page, fit width, fixed zoom levels, 90° rotation.
-- **Per-file memory.** Binding direction, spread mode, and the current page are
-  restored the next time you open the file.
 - **CJK support built in.** The pdf.js CMap tables are bundled, so PDFs that use
   a predefined encoding (`UniJIS-UCS2-H`, `90ms-RKSJ-H`, …) render correctly.
-- **EPUB, reflowable and fixed-layout.** Vertically set Japanese renders
-  vertically, with ruby, and the binding comes from the book's own
-  `page-progression-direction`, so the arrow keys follow it without any guessing.
-  Two columns side by side for horizontally set books, a table of contents that
-  highlights where you are, adjustable type size, and paginated or scrolled
-  reading. Your place in the book is kept as an EPUB CFI and restored exactly.
+
+### EPUB
+
+Obsidian cannot open EPUBs at all, and in a stock vault does not even list them
+in the file explorer. BookView reads both reflowable and fixed-layout books.
+
+- **Vertical Japanese, set vertically**, ruby and all — the book's own
+  stylesheet does the typesetting, so it looks the way its designer meant it to.
+- **The binding is read, not guessed.** It comes from the spine's
+  `page-progression-direction`, so `←` means "next" in a right-opening book
+  without any of the sniffing the PDF side has to do.
+- **Two columns side by side** for horizontally set books. Vertical text already
+  runs right to left across the full width, which is the spread.
+- **Type size, and paginated or scrolled reading**, switchable at any time.
+
+### Both
+
+- **Contents panel.** The book's own outline is shown as a collapsible tree;
+  clicking an entry jumps to it, and the entry covering where you are is
+  highlighted. Empty for a document that carries no outline.
+- **Per-file memory.** For a PDF, the binding direction, spread mode and current
+  page; for an EPUB, your place in the text as an EPUB CFI, restored exactly.
 - **No network access.** pdf.js, its worker, the CMaps, and the EPUB renderer
   are all bundled into `main.js`; nothing is fetched at runtime. Books are
   rendered under a Content-Security-Policy that denies scripts and every network
