@@ -44,7 +44,7 @@ const inlineAssets = {
         path.dirname(require.resolve("pdfjs-dist/package.json")),
         "cmaps"
       );
-      const names = (await fs.readdir(cmapDir)).filter((n) => n.endsWith(".bcmap"));
+      const names = (await fs.readdir(cmapDir)).filter((n) => n.endsWith(".bcmap")).sort();
       const table = {};
       for (const name of names) {
         const buf = await fs.readFile(path.join(cmapDir, name));

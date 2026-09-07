@@ -25,7 +25,7 @@ const inlineAssets = {
         "cmaps"
       );
       const table = {};
-      for (const name of (await fs.readdir(cmapDir)).filter((n) => n.endsWith(".bcmap"))) {
+      for (const name of (await fs.readdir(cmapDir)).filter((n) => n.endsWith(".bcmap")).sort()) {
         table[name.replace(/\.bcmap$/, "")] = (
           await fs.readFile(path.join(cmapDir, name))
         ).toString("base64");
