@@ -176,7 +176,7 @@ export class BookPdfView extends FileView {
   }
 
   getState(): Record<string, unknown> {
-    const state = super.getState() as Record<string, unknown>;
+    const state = super.getState();
     state.bookview = { ...this.docState };
     return state;
   }
@@ -478,7 +478,7 @@ export class BookPdfView extends FileView {
 
     let contentWidth = viewports.reduce((sum, v) => sum + v.width, 0);
     if (lone) contentWidth += viewports[0].width; // the blank half mirrors the real page
-    const contentHeight = Math.max.apply(null, viewports.map((v) => v.height));
+    const contentHeight = Math.max(...viewports.map((v) => v.height));
     const totalWidth = contentWidth + gap * (slots - 1);
 
     // Emptied first so the stage is measured without the previous spread's
@@ -813,7 +813,7 @@ export class BookPdfView extends FileView {
   private async readOutline(doc: PDFDocumentProxy): Promise<OutlineEntry[]> {
     let raw: RawOutlineItem[];
     try {
-      raw = ((await doc.getOutline()) ?? []) as RawOutlineItem[];
+      raw = (await doc.getOutline()) ?? [];
     } catch (err) {
       console.error("BookView: could not read the outline", err);
       return [];
@@ -852,9 +852,9 @@ export class BookPdfView extends FileView {
     doc: PDFDocumentProxy
   ): Promise<number | null> {
     try {
-      const explicit = typeof dest === "string" ? await doc.getDestination(dest) : dest;
+    const explicit: unknown = typeof dest === "string" ? await doc.getDestination(dest) : dest;
       if (!Array.isArray(explicit) || !explicit.length) return null;
-      const target = explicit[0];
+      const target: unknown = explicit[0];
       if (typeof target === "number") return clamp(target + 1, 1, doc.numPages);
       const index = await doc.getPageIndex(target as { num: number; gen: number });
       return clamp(index + 1, 1, doc.numPages);

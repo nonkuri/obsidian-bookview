@@ -1,7 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
-import { createRequire } from "module";
+import { builtinModules, createRequire } from "module";
 import fs from "fs/promises";
 import path from "path";
 
@@ -36,7 +35,7 @@ const inlineAssets = {
     build.onLoad({ filter: /.*/, namespace: "pdfjs-asset" }, async (args) => {
       if (args.path === "pdfjs-worker-source") {
         const file = require.resolve(
-          `pdfjs-dist/legacy/build/pdf.worker${prod ? ".min" : ""}.js`
+          `pdfjs-dist/legacy/build/pdf.worker${prod ? ".min" : ""}.mjs`
         );
         return { contents: await fs.readFile(file, "utf8"), loader: "text" };
       }
@@ -75,10 +74,10 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    ...builtinModules,
   ],
   format: "cjs",
-  target: "es2018",
+  target: "es2022",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,

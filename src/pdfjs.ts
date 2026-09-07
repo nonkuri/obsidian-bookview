@@ -1,4 +1,4 @@
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerSource from "pdfjs-worker-source";
 import cmapTable from "pdfjs-cmaps";
 
@@ -6,9 +6,6 @@ export type PDFDocumentProxy = pdfjs.PDFDocumentProxy;
 export type PDFPageProxy = pdfjs.PDFPageProxy;
 export type PageViewport = pdfjs.PageViewport;
 export type RenderTask = pdfjs.RenderTask;
-
-/** `CMapCompressionType.BINARY` — the `.bcmap` files shipped with pdf.js. */
-const CMAP_BINARY = 1;
 
 let workerUrl: string | null = null;
 
@@ -26,16 +23,18 @@ function base64ToBytes(base64: string): Uint8Array {
  * these tables.
  */
 class InlineCMapReaderFactory {
-  async fetch({ name }: { name: string }): Promise<{ cMapData: Uint8Array; compressionType: number }> {
+  async fetch({ name }: { name: string }): Promise<{ cMapData: Uint8Array; isCompressed: boolean }> {
     const base64 = cmapTable[name];
     if (!base64) throw new Error(`Unable to load CMap: ${name}`);
-    return { cMapData: base64ToBytes(base64), compressionType: CMAP_BINARY };
+    // The bundled tables are the packed `.bcmap` files pdf.js ships with.
+    return { cMapData: base64ToBytes(base64), isCompressed: true };
   }
 }
 
 /** Must be called once before {@link loadPdfDocument}. */
 export function initPdfJs(): void {
   if (workerUrl) return;
+  // pdf.js starts this as a module worker, which a blob URL serves happily.
   const blob = new Blob([workerSource], { type: "application/javascript" });
   workerUrl = URL.createObjectURL(blob);
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;

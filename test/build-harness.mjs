@@ -17,7 +17,7 @@ const inlineAssets = {
     }));
     build.onLoad({ filter: /.*/, namespace: "pdfjs-asset" }, async (args) => {
       if (args.path === "pdfjs-worker-source") {
-        const file = require.resolve("pdfjs-dist/legacy/build/pdf.worker.js");
+        const file = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
         return { contents: await fs.readFile(file, "utf8"), loader: "text" };
       }
       const cmapDir = path.join(
@@ -39,7 +39,7 @@ await esbuild.build({
   entryPoints: [path.join(here, "harness.ts")],
   bundle: true,
   format: "iife",
-  target: "es2018",
+  target: "es2022",
   sourcemap: "inline",
   outfile: path.join(here, "harness.js"),
   plugins: [inlineAssets],

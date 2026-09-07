@@ -33,7 +33,7 @@ export default class BookViewPlugin extends Plugin {
     this.addSettingTab(new BookViewSettingTab(this.app, this));
 
     this.addCommand({
-      id: "open-in-bookview",
+      id: "open-current-pdf",
       name: "Open current PDF in a book view",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();

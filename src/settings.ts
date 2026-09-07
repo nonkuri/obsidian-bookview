@@ -140,7 +140,6 @@ export class BookViewSettingTab extends PluginSettingTab {
         s
           .setLimits(0, 48, 1)
           .setValue(this.plugin.settings.spreadGap)
-          .setDynamicTooltip()
           .onChange(async (v) => {
             this.plugin.settings.spreadGap = v;
             await this.plugin.saveSettings();
@@ -180,7 +179,6 @@ export class BookViewSettingTab extends PluginSettingTab {
         s
           .setLimits(1, 4, 0.5)
           .setValue(this.plugin.settings.maxPixelRatio)
-          .setDynamicTooltip()
           .onChange(async (v) => {
             this.plugin.settings.maxPixelRatio = v;
             await this.plugin.saveSettings();
