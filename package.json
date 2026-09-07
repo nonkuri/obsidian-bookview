@@ -1,6 +1,6 @@
 {
   "name": "obsidian-bookview",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "PDF viewer for Obsidian with two-page spread support for right-to-left (vertical Japanese) books.",
   "main": "main.js",
   "private": true,
