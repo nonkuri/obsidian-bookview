@@ -37,6 +37,11 @@ export interface BookViewSettings {
   epubGap: number;
   /** Cap on the measure, in pixels, so a wide pane does not produce unreadable lines. */
   epubMaxLineLength: number;
+  /**
+   * Cap on the text area in the direction the lines stack, in pixels: the width
+   * of a vertically set book, the height of a horizontal one.
+   */
+  epubMaxBlockSize: number;
   epubLineHeight: number;
   epubStates: Record<string, EpubState>;
 }
@@ -62,6 +67,7 @@ export const DEFAULT_SETTINGS: BookViewSettings = {
   defaultFontScale: 100,
   epubGap: 6,
   epubMaxLineLength: 720,
+  epubMaxBlockSize: 1440,
   epubLineHeight: 1.7,
   epubStates: {},
 };
@@ -271,6 +277,25 @@ export class BookViewSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.epubMaxLineLength)
           .onChange(async (v) => {
             this.plugin.settings.epubMaxLineLength = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Body width in vertical writing")
+      .setDesc(
+        "How far the text runs across the page in a vertically set book. A horizontally set one " +
+          "is unaffected in width — there the same limit caps the height instead, because it bounds " +
+          "the direction the lines stack. At the top of the range it stops constraining anything on " +
+          "most screens."
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(800, 3000, 40)
+          .setValue(this.plugin.settings.epubMaxBlockSize)
+          .onChange(async (v) => {
+            this.plugin.settings.epubMaxBlockSize = v;
             await this.plugin.saveSettings();
             this.plugin.refreshOpenViews();
           })

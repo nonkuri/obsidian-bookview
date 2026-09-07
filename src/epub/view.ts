@@ -342,6 +342,7 @@ export class BookEpubView extends FileView {
     renderer.setAttribute("margin", "24px");
     renderer.setAttribute("max-column-count", String(this.state.columns));
     renderer.setAttribute("max-inline-size", this.plugin.settings.epubMaxLineLength + "px");
+    renderer.setAttribute("max-block-size", this.plugin.settings.epubMaxBlockSize + "px");
     renderer.setStyles?.(this.bookStyles());
 
     this.stageEl.toggleClass(
@@ -641,7 +642,7 @@ export class BookEpubView extends FileView {
       dx: Math.round(evt.deltaX * 100) / 100,
       dy: Math.round(evt.deltaY * 100) / 100,
       mode: ["pixel", "line", "page"][evt.deltaMode] ?? String(evt.deltaMode),
-      on: typeof tag === "string" ? tag.toLowerCase() : String(evt.target),
+      on: typeof tag === "string" ? tag.toLowerCase() : "(not an element)",
       inBook: evt.view !== this.viewWin,
       outcome,
     });

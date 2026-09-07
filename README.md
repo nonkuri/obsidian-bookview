@@ -136,7 +136,8 @@ Every action is also a command, so you can assign your own hotkeys under
   halves of a spread, page shadow, colour inversion in dark mode, and render
   quality.
 - Defaults for newly opened EPUBs: paginated or scrolled, two columns, type
-  size, line length, line spacing, and the gap between columns.
+  size, line length, body width in vertical writing, line spacing, and the gap
+  between columns.
 - Whether BookView handles `.pdf` and `.epub` files, and whether per-file state
   is stored.
 

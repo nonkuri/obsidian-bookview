@@ -144,7 +144,10 @@ async function inlineStylesheets(doc: Document): Promise<void> {
     // `@charset` is only meaningful at the head of an external stylesheet; left
     // in a <style> it is a parse error, and the rule after it can be taken with
     // it. The document's own encoding already governs this text.
-    style.textContent = css.replace(/^﻿?\s*@charset\s+["'][^"']*["']\s*;/i, "");
+    // A stylesheet may open with a byte-order mark; strip it rather than
+    // matching one, which would put an invisible character in the source.
+    const text = css.charCodeAt(0) === 0xfeff ? css.slice(1) : css;
+    style.textContent = text.replace(/^\s*@charset\s+["'][^"']*["']\s*;/i, "");
     link.replaceWith(style);
   }
 }

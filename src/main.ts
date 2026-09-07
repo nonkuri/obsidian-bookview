@@ -114,10 +114,7 @@ export default class BookViewPlugin extends Plugin {
       const report = JSON.stringify(v.collectDiagnostics(), null, 2);
       navigator.clipboard.writeText(report).then(
         () => new Notice("BookView diagnostics copied to the clipboard."),
-        () => {
-          console.log("BookView diagnostics\n" + report);
-          new Notice("Could not reach the clipboard; the report is in the console.");
-        }
+        () => new Notice("BookView could not reach the clipboard.")
       );
     });
 
@@ -405,7 +402,7 @@ export default class BookViewPlugin extends Plugin {
 function isKnownViewType(registry: ViewRegistryLike, viewType: string): boolean {
   const known = registry.viewByType;
   if (!known || typeof known !== "object") return true;
-  return Object.prototype.hasOwnProperty.call(known, viewType);
+  return Object.keys(known).includes(viewType);
 }
 
 /** The BookView view type for a file extension, or `null` if it opens neither. */
