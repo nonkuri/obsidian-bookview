@@ -1,11 +1,23 @@
 /* ---------------------------------------------------------------- layout -- */
 
-.bookview-view-content {
-  padding: 0 !important;
+/* Specific enough to beat the core `.view-content` padding without !important. */
+.workspace-leaf-content[data-type="bookview-pdf"] .view-content,
+.view-content.bookview-view-content {
+  padding: 0;
   overflow: hidden;
 }
 
 .bookview-root {
+  /* Overridable by themes and snippets. */
+  --bookview-page-bg: #fff;
+  --bookview-page-bg-inverted: #000;
+  --bookview-page-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  /* Set per render: the gap between the halves of a spread, and the size the
+     current page is drawn at. */
+  --bookview-spread-gap: 0px;
+  --bookview-page-width: auto;
+  --bookview-page-height: auto;
+
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -104,6 +116,102 @@
   color: var(--text-normal);
 }
 
+/* --------------------------------------------------------------- outline -- */
+
+.bookview-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.bookview-outline {
+  flex: 0 0 var(--bookview-outline-width, 220px);
+  overflow: auto;
+  padding: 6px 4px;
+  border-right: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+}
+
+/* Scoped one level deeper than a theme's own `.tree-item-*` rules, so the
+   layout of the panel cannot be overridden by the theme it borrows its
+   colours from. */
+.bookview-outline .bookview-outline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  /* Nesting is expressed as a depth on the row, so the indent stays in CSS. */
+  padding: 1px 4px 1px calc(var(--bookview-outline-depth, 0) * 12px);
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  cursor: pointer;
+  user-select: none;
+}
+
+.bookview-outline .bookview-outline-row.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.bookview-outline .bookview-outline-row.is-clickable:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.bookview-outline .bookview-outline-row.is-current {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
+.bookview-outline .bookview-outline-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.bookview-outline .bookview-outline-twisty,
+.bookview-outline .bookview-outline-indent {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.bookview-outline .bookview-outline-twisty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+}
+
+.bookview-outline .bookview-outline-twisty:hover {
+  color: var(--text-normal);
+}
+
+.bookview-outline-item.is-collapsed > .bookview-outline-row .bookview-outline-twisty {
+  transform: rotate(-90deg);
+}
+
+.bookview-outline-item.is-collapsed > .bookview-outline-children {
+  display: none;
+}
+
+.bookview-outline .bookview-outline-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 1px 2px;
+  font-size: var(--font-ui-small);
+  line-height: 1.35;
+  text-align: left;
+  /* A long heading wraps inside the panel instead of spilling out of it. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bookview-outline-empty {
+  padding: 8px 6px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
 /* ----------------------------------------------------------------- stage -- */
 
 .bookview-stage {
@@ -130,6 +238,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  gap: var(--bookview-spread-gap);
   margin: auto;
 }
 
@@ -139,23 +248,27 @@
 
 .bookview-page {
   line-height: 0;
-  background-color: #fff;
+  background-color: var(--bookview-page-bg);
 }
 
 .bookview-spread.is-shadow .bookview-page:not(.bookview-page-spacer) {
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--bookview-page-shadow);
 }
 
 .bookview-page-spacer {
+  width: var(--bookview-page-width);
+  height: var(--bookview-page-height);
   background-color: transparent;
 }
 
 .bookview-canvas {
   display: block;
+  width: var(--bookview-page-width);
+  height: var(--bookview-page-height);
 }
 
 .theme-dark .bookview-spread.is-inverted .bookview-page {
-  background-color: #000;
+  background-color: var(--bookview-page-bg-inverted);
 }
 
 .theme-dark .bookview-spread.is-inverted .bookview-canvas {

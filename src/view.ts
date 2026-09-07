@@ -12,8 +12,35 @@ const ZOOM_STEPS = [
 const MIN_ZOOM = ZOOM_STEPS[0];
 const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
+/** Outlines can nest arbitrarily deep; stop before a pathological file does. */
+const MAX_OUTLINE_DEPTH = 12;
+
+/** Kana, CJK ideographs and their punctuation — the scripts read right to left when set vertically. */
+const CJK_PATTERN = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/g;
+/** Hebrew and Arabic, which are bound on the right whichever way they are set. */
+const RTL_SCRIPT_PATTERN = /[\u0590-\u05ff\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]/g;
+/** How far to read when guessing the binding, and how much text settles it. */
+const SNIFF_PAGES = 3;
+const SNIFF_MIN_CHARS = 200;
+const SNIFF_ENOUGH_CHARS = 2000;
+
 /** A single unit of display: one page, or the two halves of a spread. */
 type Spread = number[];
+
+/** The shape pdf.js returns from `getOutline()`, as much of it as we use. */
+interface RawOutlineItem {
+  title?: string;
+  dest?: string | unknown[] | null;
+  items?: RawOutlineItem[];
+}
+
+/** One outline entry, with its destination already resolved to a page. */
+interface OutlineEntry {
+  title: string;
+  /** `null` when the entry points nowhere we can follow. */
+  page: number | null;
+  children: OutlineEntry[];
+}
 
 export class BookPdfView extends FileView {
   allowNoFile = false;
@@ -32,6 +59,8 @@ export class BookPdfView extends FileView {
 
   private rootEl!: HTMLElement;
   private toolbarEl!: HTMLElement;
+  private bodyEl!: HTMLElement;
+  private outlineEl!: HTMLElement;
   private stageEl!: HTMLElement;
   private spreadEl!: HTMLElement;
   private messageEl!: HTMLElement;
@@ -46,6 +75,14 @@ export class BookPdfView extends FileView {
   private rtlBtn!: HTMLElement;
   private fitPageBtn!: HTMLElement;
   private fitWidthBtn!: HTMLElement;
+  private outlineBtn!: HTMLElement;
+
+  private outlineVisible = false;
+  private outlineEntries: OutlineEntry[] | null = null;
+  /** Shared so that loading the outline twice cannot start two reads. */
+  private outlinePromise: Promise<OutlineEntry[]> | null = null;
+  /** Every row that leads somewhere, so the current one can be highlighted. */
+  private outlineRows: { page: number; el: HTMLElement }[] = [];
 
   private resizeObserver: ResizeObserver | null = null;
   private resizeTimer: number | null = null;
@@ -55,6 +92,15 @@ export class BookPdfView extends FileView {
   constructor(leaf: WorkspaceLeaf, private plugin: BookViewPlugin) {
     super(leaf);
     this.docState = plugin.defaultDocState();
+  }
+
+  /** The window this view lives in, which is not `window` in a popout. */
+  private get viewWin(): Window {
+    return this.containerEl.ownerDocument.defaultView ?? window;
+  }
+
+  private get viewDoc(): Document {
+    return this.containerEl.ownerDocument;
   }
 
   getViewType(): string {
@@ -82,7 +128,7 @@ export class BookPdfView extends FileView {
   async onLoadFile(file: TFile): Promise<void> {
     this.buildDom();
     this.teardownDocument();
-    this.showMessage(file.basename + " を読み込み中…");
+    this.showMessage("Loading " + file.basename + "…");
 
     const remembered = this.plugin.getFileState(file.path);
     const base = this.plugin.defaultDocState();
@@ -94,7 +140,7 @@ export class BookPdfView extends FileView {
     try {
       data = await this.app.vault.readBinary(file);
     } catch (err) {
-      this.showMessage("ファイルを読み込めませんでした: " + errorMessage(err));
+      this.showMessage("Could not read the file: " + errorMessage(err));
       return;
     }
     if (this.file !== file) return;
@@ -116,9 +162,10 @@ export class BookPdfView extends FileView {
       this.rebuildSpreads();
       this.updateToolbar();
       await this.render();
+      void this.prepareOutline(doc);
     } catch (err) {
       if (this.loadingTask !== task) return;
-      this.showMessage("PDF を開けませんでした: " + errorMessage(err));
+      this.showMessage("Could not open the PDF: " + errorMessage(err));
     }
   }
 
@@ -157,21 +204,21 @@ export class BookPdfView extends FileView {
     menu.addSeparator();
     menu.addItem((item) =>
       item
-        .setTitle("見開き表示 / Two-page spread")
+        .setTitle("Two-page spread")
         .setIcon("book-open")
         .setChecked(this.docState.spread === "spread")
         .onClick(() => this.toggleSpread())
     );
     menu.addItem((item) =>
       item
-        .setTitle("右綴じ / Right-to-left binding")
+        .setTitle("Right-to-left binding")
         .setIcon("arrow-left-right")
         .setChecked(this.docState.rtl)
         .onClick(() => this.toggleRtl())
     );
     menu.addItem((item) =>
       item
-        .setTitle("表紙を表示 / Show cover page")
+        .setTitle("Show cover page")
         .setIcon("book")
         .setChecked(this.docState.cover)
         .onClick(() => this.toggleCover())
@@ -190,6 +237,11 @@ export class BookPdfView extends FileView {
     if (task) void task.destroy().catch(() => undefined);
     else if (doc) void doc.destroy().catch(() => undefined);
     if (this.spreadEl) this.spreadEl.empty();
+    this.outlineEntries = null;
+    this.outlinePromise = null;
+    this.outlineRows = [];
+    this.setOutlineVisible(false);
+    if (this.outlineEl) this.outlineEl.empty();
   }
 
   private cancelRenders(): void {
@@ -213,13 +265,20 @@ export class BookPdfView extends FileView {
 
     this.rootEl = container.createDiv({ cls: "bookview-root" });
     this.toolbarEl = this.rootEl.createDiv({ cls: "bookview-toolbar" });
-    this.stageEl = this.rootEl.createDiv({ cls: "bookview-stage" });
+    this.bodyEl = this.rootEl.createDiv({ cls: "bookview-body" });
+    this.outlineEl = this.bodyEl.createDiv({ cls: "bookview-outline" });
+    this.outlineEl.hide();
+    this.stageEl = this.bodyEl.createDiv({ cls: "bookview-stage" });
     this.stageEl.tabIndex = 0;
     this.spreadEl = this.stageEl.createDiv({ cls: "bookview-spread" });
     this.messageEl = this.stageEl.createDiv({ cls: "bookview-message" });
     this.messageEl.hide();
 
     this.buildToolbar();
+
+    // One delegated handler, so re-reading an outline cannot pile up listeners.
+    this.registerDomEvent(this.outlineEl, "click", (evt) => this.onOutlineClick(evt));
+    this.registerDomEvent(this.outlineEl, "keydown", (evt) => this.onOutlineKeyDown(evt));
 
     this.registerDomEvent(this.stageEl, "keydown", (evt) => this.onKeyDown(evt));
     this.registerDomEvent(this.stageEl, "wheel", (evt) => this.onWheel(evt), { passive: false });
@@ -233,18 +292,21 @@ export class BookPdfView extends FileView {
       this.register(() => this.resizeObserver?.disconnect());
     }
     this.register(() => {
-      if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
+      if (this.resizeTimer !== null) this.viewWin.clearTimeout(this.resizeTimer);
     });
   }
 
   private buildToolbar(): void {
+    const side = this.toolbarEl.createDiv({ cls: "bookview-toolbar-group" });
+    this.outlineBtn = this.makeButton(side, "list", "Outline (T)", () => void this.toggleOutline());
+
     const nav = this.toolbarEl.createDiv({ cls: "bookview-toolbar-group" });
-    this.prevBtn = this.makeButton(nav, "chevron-left", "前のページ", () => this.turn(-1));
+    this.prevBtn = this.makeButton(nav, "chevron-left", "Previous page", () => this.turn(-1));
     const pageBox = nav.createDiv({ cls: "bookview-pagebox" });
     this.pageInput = pageBox.createEl("input", { cls: "bookview-page-input", type: "text" });
     this.pageInput.inputMode = "numeric";
     this.pageTotalEl = pageBox.createSpan({ cls: "bookview-page-total", text: "/ 0" });
-    this.nextBtn = this.makeButton(nav, "chevron-right", "次のページ", () => this.turn(1));
+    this.nextBtn = this.makeButton(nav, "chevron-right", "Next page", () => this.turn(1));
 
     this.registerDomEvent(this.pageInput, "keydown", (evt) => {
       evt.stopPropagation();
@@ -260,26 +322,30 @@ export class BookPdfView extends FileView {
     this.registerDomEvent(this.pageInput, "focus", () => this.pageInput.select());
 
     const layout = this.toolbarEl.createDiv({ cls: "bookview-toolbar-group" });
-    this.spreadBtn = this.makeButton(layout, "book-open", "見開き表示 (S)", () => this.toggleSpread());
-    this.coverBtn = this.makeButton(layout, "book", "表紙を表示 (C)", () => this.toggleCover());
-    this.rtlBtn = this.makeButton(layout, "arrow-left", "右綴じ (R)", () => this.toggleRtl());
+    this.spreadBtn = this.makeButton(layout, "book-open", "Two-page spread (S)", () =>
+      this.toggleSpread()
+    );
+    this.coverBtn = this.makeButton(layout, "book", "Show cover page (C)", () => this.toggleCover());
+    this.rtlBtn = this.makeButton(layout, "arrow-left", "Right-to-left binding (R)", () =>
+      this.toggleRtl()
+    );
 
     const spacer = this.toolbarEl.createDiv({ cls: "bookview-toolbar-spacer" });
     spacer.setAttr("aria-hidden", "true");
 
     const zoom = this.toolbarEl.createDiv({ cls: "bookview-toolbar-group" });
-    this.makeButton(zoom, "zoom-out", "縮小 (-)", () => this.stepZoom(-1));
+    this.makeButton(zoom, "zoom-out", "Zoom out (-)", () => this.stepZoom(-1));
     this.zoomLabel = zoom.createEl("button", { cls: "bookview-zoom-label", text: "100%" });
-    setTooltip(this.zoomLabel, "拡大率");
+    setTooltip(this.zoomLabel, "Zoom");
     this.registerDomEvent(this.zoomLabel, "click", (evt) => this.openZoomMenu(evt));
-    this.makeButton(zoom, "zoom-in", "拡大 (+)", () => this.stepZoom(1));
-    this.fitPageBtn = this.makeButton(zoom, "maximize", "全体を表示 (0)", () => this.setFit("page"));
-    this.fitWidthBtn = this.makeButton(zoom, "move-horizontal", "幅に合わせる (W)", () =>
+    this.makeButton(zoom, "zoom-in", "Zoom in (+)", () => this.stepZoom(1));
+    this.fitPageBtn = this.makeButton(zoom, "maximize", "Fit page (0)", () => this.setFit("page"));
+    this.fitWidthBtn = this.makeButton(zoom, "move-horizontal", "Fit width (W)", () =>
       this.setFit("width")
     );
 
     const extra = this.toolbarEl.createDiv({ cls: "bookview-toolbar-group" });
-    this.makeButton(extra, "rotate-cw", "右に回転", () => this.rotate(90));
+    this.makeButton(extra, "rotate-cw", "Rotate clockwise", () => this.rotate(90));
   }
 
   private makeButton(
@@ -370,8 +436,9 @@ export class BookPdfView extends FileView {
 
   private scheduleRerender(): void {
     if (!this.doc) return;
-    if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
-    this.resizeTimer = window.setTimeout(() => {
+    const win = this.viewWin;
+    if (this.resizeTimer !== null) win.clearTimeout(this.resizeTimer);
+    this.resizeTimer = win.setTimeout(() => {
       this.resizeTimer = null;
       if (this.stageEl.clientWidth === 0 || this.stageEl.clientHeight === 0) return;
       const key = this.stageEl.clientWidth + "x" + this.stageEl.clientHeight;
@@ -397,7 +464,7 @@ export class BookPdfView extends FileView {
       pages = await Promise.all(spread.map((n) => doc.getPage(n)));
     } catch (err) {
       if (token === this.renderToken) {
-        this.showMessage("ページを読み込めませんでした: " + errorMessage(err));
+        this.showMessage("Could not load the page: " + errorMessage(err));
       }
       return;
     }
@@ -417,20 +484,28 @@ export class BookPdfView extends FileView {
     // Emptied first so the stage is measured without the previous spread's
     // scrollbars, which would otherwise shrink the fit and oscillate.
     this.spreadEl.empty();
-    const scale = this.computeScale(totalWidth, contentHeight);
+    const space = this.stageSpace();
+    if (this.docState.fit !== "custom" && (space.width <= 0 || space.height <= 0)) {
+      // The leaf has no size yet — a background tab, or a pane still opening.
+      // Fitting to nothing would bake a meaningless scale into the canvas, so
+      // wait instead: the resize that gives the stage a size brings us back.
+      // The key is cleared so that resize is never mistaken for a no-op.
+      this.lastViewportKey = "";
+      return;
+    }
+    const scale = this.computeScale(totalWidth, contentHeight, space);
     this.renderedScale = scale;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, this.plugin.settings.maxPixelRatio);
+    const dpr = Math.min(this.viewWin.devicePixelRatio || 1, this.plugin.settings.maxPixelRatio);
 
-    this.spreadEl.style.gap = gap + "px";
+    this.spreadEl.style.setProperty("--bookview-spread-gap", gap + "px");
     this.spreadEl.toggleClass("is-rtl", this.docState.rtl && slots > 1);
     this.spreadEl.toggleClass("is-shadow", this.plugin.settings.pageShadow);
     this.spreadEl.toggleClass("is-inverted", this.plugin.settings.invertInDarkMode);
 
     const makeSpacer = () => {
       const el = this.spreadEl.createDiv({ cls: "bookview-page bookview-page-spacer" });
-      el.style.width = Math.floor(viewports[0].width * scale) + "px";
-      el.style.height = Math.floor(viewports[0].height * scale) + "px";
+      setPageSize(el, viewports[0].width * scale, viewports[0].height * scale);
     };
 
     if (lone === "leading") makeSpacer();
@@ -441,8 +516,7 @@ export class BookPdfView extends FileView {
       const wrapper = this.spreadEl.createDiv({ cls: "bookview-page" });
       wrapper.dataset.page = String(spread[i]);
       const canvas = wrapper.createEl("canvas", { cls: "bookview-canvas" });
-      canvas.style.width = Math.floor(vp.width * scale) + "px";
-      canvas.style.height = Math.floor(vp.height * scale) + "px";
+      setPageSize(canvas, vp.width * scale, vp.height * scale);
       canvas.width = Math.max(1, Math.floor(vp.width * scale * dpr));
       canvas.height = Math.max(1, Math.floor(vp.height * scale * dpr));
       canvases.push(canvas);
@@ -491,16 +565,31 @@ export class BookPdfView extends FileView {
     this.persistState();
   }
 
-  private computeScale(totalWidth: number, contentHeight: number): number {
-    if (this.docState.fit === "custom") return clamp(this.docState.zoom, MIN_ZOOM, MAX_ZOOM);
-    const style = window.getComputedStyle(this.stageEl);
+  /**
+   * The room a spread has inside the stage, in CSS pixels. Zero or less means
+   * the view is not laid out: the leaf is hidden, or still being opened.
+   */
+  private stageSpace(): { width: number; height: number } {
+    const style = this.viewWin.getComputedStyle(this.stageEl);
     const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
     const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-    const availWidth = Math.max(40, this.stageEl.clientWidth - padX);
-    const availHeight = Math.max(40, this.stageEl.clientHeight - padY);
-    const byWidth = availWidth / totalWidth;
+    return {
+      width: this.stageEl.clientWidth - padX,
+      height: this.stageEl.clientHeight - padY,
+    };
+  }
+
+  private computeScale(
+    totalWidth: number,
+    contentHeight: number,
+    space: { width: number; height: number }
+  ): number {
+    if (this.docState.fit === "custom") return clamp(this.docState.zoom, MIN_ZOOM, MAX_ZOOM);
+    const byWidth = Math.max(40, space.width) / totalWidth;
     const scale =
-      this.docState.fit === "width" ? byWidth : Math.min(byWidth, availHeight / contentHeight);
+      this.docState.fit === "width"
+        ? byWidth
+        : Math.min(byWidth, Math.max(40, space.height) / contentHeight);
     return clamp(scale, MIN_ZOOM, MAX_ZOOM);
   }
 
@@ -510,7 +599,7 @@ export class BookPdfView extends FileView {
     const total = this.doc ? this.doc.numPages : 0;
     const spread = this.currentSpread();
     this.pageTotalEl.setText("/ " + total);
-    if (document.activeElement !== this.pageInput) {
+    if (this.viewDoc.activeElement !== this.pageInput) {
       this.pageInput.value =
         spread.length > 1
           ? spread[0] + "–" + spread[spread.length - 1]
@@ -534,11 +623,20 @@ export class BookPdfView extends FileView {
 
     this.rtlBtn.toggleClass("is-active", this.docState.rtl);
     setIcon(this.rtlBtn, this.docState.rtl ? "arrow-left" : "arrow-right");
-    setTooltip(this.rtlBtn, this.docState.rtl ? "右綴じ（左へ進む）(R)" : "左綴じ（右へ進む）(R)");
+    setTooltip(
+      this.rtlBtn,
+      this.docState.rtl ? "Right-to-left binding (R)" : "Left-to-right binding (R)"
+    );
 
     this.fitPageBtn.toggleClass("is-active", this.docState.fit === "page");
     this.fitWidthBtn.toggleClass("is-active", this.docState.fit === "width");
     this.zoomLabel.setText(Math.round(this.renderedScale * 100) + "%");
+
+    // Until the outline has been read, the button stays available: pressing it
+    // simply waits for the read and reports an empty outline.
+    this.outlineBtn.toggleClass("is-disabled", this.outlineEntries?.length === 0);
+    this.outlineBtn.toggleClass("is-active", this.outlineVisible);
+    this.updateOutlineHighlight();
   }
 
   private commitPageInput(): void {
@@ -554,13 +652,13 @@ export class BookPdfView extends FileView {
     const menu = new Menu();
     menu.addItem((i) =>
       i
-        .setTitle("全体を表示 / Fit page")
+        .setTitle("Fit page")
         .setChecked(this.docState.fit === "page")
         .onClick(() => this.setFit("page"))
     );
     menu.addItem((i) =>
       i
-        .setTitle("幅に合わせる / Fit width")
+        .setTitle("Fit width")
         .setChecked(this.docState.fit === "width")
         .onClick(() => this.setFit("width"))
     );
@@ -620,21 +718,21 @@ export class BookPdfView extends FileView {
 
   toggleCover(): void {
     if (this.docState.spread !== "spread") {
-      new Notice("「表紙を表示」は見開き表示のときに使えます。");
+      new Notice("The cover page option only applies to two-page spreads.");
       return;
     }
     this.docState.cover = !this.docState.cover;
     this.rebuildSpreads();
     this.updateToolbar();
     void this.render();
-    new Notice(this.docState.cover ? "表紙を単独で表示します" : "表紙も見開きに含めます");
+    new Notice(this.docState.cover ? "Cover page shown on its own" : "Cover page paired");
   }
 
   toggleRtl(): void {
     this.docState.rtl = !this.docState.rtl;
     this.updateToolbar();
     void this.render();
-    new Notice(this.docState.rtl ? "右綴じ（縦書き向け）" : "左綴じ");
+    new Notice(this.docState.rtl ? "Right-to-left binding" : "Left-to-right binding");
   }
 
   setFit(fit: FitMode): void {
@@ -666,12 +764,214 @@ export class BookPdfView extends FileView {
     void this.render();
   }
 
+  /** Shows or hides the outline panel, reading the outline the first time. */
+  async toggleOutline(): Promise<void> {
+    const doc = this.doc;
+    if (!doc) return;
+    if (this.outlineVisible) {
+      this.setOutlineVisible(false);
+      return;
+    }
+    const entries = await this.outlineFor(doc);
+    if (this.doc !== doc) return;
+    if (this.outlineEntries !== entries) {
+      this.outlineEntries = entries;
+      this.renderOutline();
+    }
+    if (!entries.length) {
+      new Notice("This PDF has no outline.");
+      this.updateToolbar();
+      return;
+    }
+    this.setOutlineVisible(true);
+  }
+
   getDocState(): Readonly<DocState> {
     return this.docState;
   }
 
   hasDocument(): boolean {
     return this.doc !== null;
+  }
+
+  // ----------------------------------------------------------------- outline
+
+  /** Reads the outline in the background, so the toolbar can offer it. */
+  private async prepareOutline(doc: PDFDocumentProxy): Promise<void> {
+    const entries = await this.outlineFor(doc);
+    if (this.doc !== doc) return;
+    this.outlineEntries = entries;
+    this.renderOutline();
+    this.updateToolbar();
+  }
+
+  private outlineFor(doc: PDFDocumentProxy): Promise<OutlineEntry[]> {
+    if (!this.outlinePromise) this.outlinePromise = this.readOutline(doc);
+    return this.outlinePromise;
+  }
+
+  private async readOutline(doc: PDFDocumentProxy): Promise<OutlineEntry[]> {
+    let raw: RawOutlineItem[];
+    try {
+      raw = ((await doc.getOutline()) ?? []) as RawOutlineItem[];
+    } catch (err) {
+      console.error("BookView: could not read the outline", err);
+      return [];
+    }
+    return this.resolveOutline(raw, doc, 0);
+  }
+
+  private async resolveOutline(
+    items: RawOutlineItem[],
+    doc: PDFDocumentProxy,
+    depth: number
+  ): Promise<OutlineEntry[]> {
+    const entries: OutlineEntry[] = [];
+    for (const item of items) {
+      if (this.doc !== doc) break;
+      const children =
+        depth + 1 < MAX_OUTLINE_DEPTH
+          ? await this.resolveOutline(item.items ?? [], doc, depth + 1)
+          : [];
+      entries.push({
+        title: (item.title ?? "").trim() || "Untitled",
+        page: await this.resolvePage(item.dest, doc),
+        children,
+      });
+    }
+    return entries;
+  }
+
+  /**
+   * Turns an outline destination into a page number. A destination is either a
+   * named one that has to be looked up, or an explicit array whose first entry
+   * is the page — as a reference, or already as an index.
+   */
+  private async resolvePage(
+    dest: string | unknown[] | null | undefined,
+    doc: PDFDocumentProxy
+  ): Promise<number | null> {
+    try {
+      const explicit = typeof dest === "string" ? await doc.getDestination(dest) : dest;
+      if (!Array.isArray(explicit) || !explicit.length) return null;
+      const target = explicit[0];
+      if (typeof target === "number") return clamp(target + 1, 1, doc.numPages);
+      const index = await doc.getPageIndex(target as { num: number; gen: number });
+      return clamp(index + 1, 1, doc.numPages);
+    } catch {
+      // A destination we cannot follow just leaves that entry unclickable.
+      return null;
+    }
+  }
+
+  private setOutlineVisible(visible: boolean): void {
+    this.outlineVisible = visible;
+    if (!this.outlineEl) return;
+    if (visible) this.outlineEl.show();
+    else this.outlineEl.hide();
+    if (this.outlineBtn) this.outlineBtn.toggleClass("is-active", visible);
+    // The stage has just changed width, so the fit has to be measured again.
+    this.lastViewportKey = "";
+    if (visible) this.updateOutlineHighlight();
+  }
+
+  private renderOutline(): void {
+    if (!this.outlineEl) return;
+    this.outlineEl.empty();
+    this.outlineRows = [];
+    const entries = this.outlineEntries ?? [];
+    if (!entries.length) {
+      this.outlineEl.createDiv({
+        cls: "bookview-outline-empty",
+        text: "This PDF has no outline.",
+      });
+      return;
+    }
+    this.renderOutlineEntries(entries, this.outlineEl.createDiv({ cls: "bookview-outline-list" }), 0);
+    this.updateOutlineHighlight();
+  }
+
+  private renderOutlineEntries(
+    entries: OutlineEntry[],
+    parent: HTMLElement,
+    depth: number
+  ): void {
+    for (const entry of entries) {
+      // Obsidian's own tree markup, so the panel follows the user's theme.
+      // Plain elements rather than buttons: a theme's button rules would centre
+      // and pad the titles, which wrecks a long heading.
+      const item = parent.createDiv({ cls: "bookview-outline-item tree-item" });
+      const row = item.createDiv({ cls: "bookview-outline-row tree-item-self" });
+      row.style.setProperty("--bookview-outline-depth", String(depth));
+
+      if (entry.children.length) {
+        const twisty = row.createDiv({
+          cls: "bookview-outline-twisty tree-item-icon collapse-icon",
+        });
+        setIcon(twisty, "chevron-down");
+        twisty.setAttr("aria-label", "Collapse or expand");
+        setTooltip(twisty, "Collapse or expand");
+      } else {
+        row.createDiv({ cls: "bookview-outline-indent" });
+      }
+
+      row.createDiv({ cls: "bookview-outline-title tree-item-inner", text: entry.title });
+      if (entry.page === null) {
+        row.addClass("is-disabled");
+      } else {
+        row.addClass("is-clickable");
+        row.dataset.page = String(entry.page);
+        row.setAttr("role", "button");
+        row.tabIndex = 0;
+        setTooltip(row, entry.title + " — page " + entry.page);
+        this.outlineRows.push({ page: entry.page, el: row });
+      }
+
+      if (entry.children.length) {
+        const children = item.createDiv({ cls: "bookview-outline-children" });
+        this.renderOutlineEntries(entry.children, children, depth + 1);
+      }
+    }
+  }
+
+  private onOutlineClick(evt: MouseEvent): void {
+    const target = evt.target as Element | null;
+    const twisty = target?.closest(".bookview-outline-twisty");
+    if (twisty) {
+      twisty.closest(".bookview-outline-item")?.classList.toggle("is-collapsed");
+      return;
+    }
+    this.followOutlineRow(target);
+  }
+
+  /** Rows carry `role="button"`, so they answer to the keyboard as well. */
+  private onOutlineKeyDown(evt: KeyboardEvent): void {
+    if (evt.key !== "Enter" && evt.key !== " ") return;
+    const target = evt.target as Element | null;
+    if (!target?.closest(".bookview-outline-row")) return;
+    evt.preventDefault();
+    this.followOutlineRow(target);
+  }
+
+  private followOutlineRow(target: Element | null): void {
+    const page = target?.closest<HTMLElement>(".bookview-outline-row")?.dataset.page;
+    if (!page) return;
+    this.goToPage(parseInt(page, 10));
+    this.stageEl.focus();
+  }
+
+  /** Marks the last entry that starts at or before the page on screen. */
+  private updateOutlineHighlight(): void {
+    if (!this.outlineRows.length) return;
+    let current: HTMLElement | null = null;
+    let currentPage = -1;
+    for (const row of this.outlineRows) {
+      if (row.page <= this.docState.page && row.page >= currentPage) {
+        currentPage = row.page;
+        current = row.el;
+      }
+    }
+    for (const row of this.outlineRows) row.el.toggleClass("is-current", row.el === current);
   }
 
   // ------------------------------------------------------------------- input
@@ -734,6 +1034,10 @@ export class BookPdfView extends FileView {
       case "R":
         this.toggleRtl();
         break;
+      case "t":
+      case "T":
+        void this.toggleOutline();
+        break;
       default:
         handled = false;
     }
@@ -782,12 +1086,14 @@ export class BookPdfView extends FileView {
    * plugin would never show a spread at all.
    */
   private async applyDocumentPreferences(doc: PDFDocumentProxy): Promise<void> {
+    let bindingKnown = false;
     try {
       const prefs = (await doc.getViewerPreferences()) as Record<string, unknown> | null;
       if (prefs) {
         const direction = findKeyIgnoringCase(prefs, "direction");
         if (typeof direction === "string") {
           this.docState.rtl = direction.toUpperCase() === "R2L";
+          bindingKnown = true;
         }
       }
     } catch {
@@ -811,12 +1117,70 @@ export class BookPdfView extends FileView {
     } catch {
       /* optional metadata */
     }
+
+    // Hardly any PDF states its binding, so fall back to reading the text.
+    if (!bindingKnown) {
+      const rtl = await this.sniffBinding(doc);
+      if (rtl !== null && this.doc === doc) this.docState.rtl = rtl;
+    }
+  }
+
+  /**
+   * Guesses the binding of a document that does not declare one. Vertically set
+   * Japanese is bound on the right, and so are Hebrew and Arabic; a document
+   * with a fair amount of text and none of those is bound on the left. Anything
+   * else — horizontally set CJK, or a scan with no text at all — is genuinely
+   * ambiguous and is left to the reader's own default.
+   *
+   * @returns `true` for right-bound, `false` for left-bound, `null` for unknown.
+   */
+  private async sniffBinding(doc: PDFDocumentProxy): Promise<boolean | null> {
+    let chars = 0;
+    let cjk = 0;
+    let rtlScript = 0;
+
+    for (let n = 1; n <= Math.min(SNIFF_PAGES, doc.numPages); n++) {
+      if (this.doc !== doc) return null;
+      let content: Awaited<ReturnType<PDFPageProxy["getTextContent"]>>;
+      try {
+        content = await (await doc.getPage(n)).getTextContent();
+      } catch {
+        return null;
+      }
+      // A vertical writing mode is only ever used for CJK, and settles it.
+      for (const style of Object.values(content.styles ?? {})) {
+        if (style.vertical) return true;
+      }
+      for (const item of content.items) {
+        const str = (item as { str?: string }).str;
+        if (typeof str !== "string") continue;
+        const text = str.trim();
+        chars += text.length;
+        cjk += (text.match(CJK_PATTERN) ?? []).length;
+        rtlScript += (text.match(RTL_SCRIPT_PATTERN) ?? []).length;
+      }
+      if (chars >= SNIFF_ENOUGH_CHARS) break;
+    }
+
+    if (rtlScript > chars * 0.2) return true;
+    if (cjk > 0) return null;
+    if (chars < SNIFF_MIN_CHARS) return null;
+    return false;
   }
 
   private persistState(): void {
     if (!this.file || !this.doc) return;
     this.plugin.saveFileState(this.file.path, this.docState);
   }
+}
+
+/**
+ * The rendered size of a page is only known at render time, so it travels to
+ * the stylesheet as a custom property rather than as an inline rule.
+ */
+function setPageSize(el: HTMLElement, width: number, height: number): void {
+  el.style.setProperty("--bookview-page-width", Math.floor(width) + "px");
+  el.style.setProperty("--bookview-page-height", Math.floor(height) + "px");
 }
 
 function clamp(value: number, min: number, max: number): number {

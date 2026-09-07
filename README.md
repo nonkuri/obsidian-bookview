@@ -1,95 +1,142 @@
-# BookView (Obsidian plugin)
+# BookView
 
-縦書き・**右綴じ**の日本語文書を、正しい向きで**見開き表示**できる Obsidian 用 PDF ビューアです。
-Acrobat Reader の「**表紙を表示**」（1 ページ目だけを単独で表示し、2 ページ目以降を 2-3 / 4-5 … と見開きにする）にも対応しています。
+日本語の説明は [README.ja.md](README.ja.md) にあります。
 
-## 機能
+A PDF viewer for Obsidian that displays two-page spreads the way a printed book
+does — including **right-to-left binding**, as used by vertically written
+Japanese books, and Acrobat Reader's **cover page** option.
 
-- **見開き表示 / 単ページ表示** の切り替え
-- **右綴じ（縦書き向け）/ 左綴じ** の切り替え
-  - 右綴じでは 1 ページ目が左半分、2 ページ目が右・3 ページ目が左…と、実際の和書と同じ並びになります
-  - 矢印キーの意味も綴じ方向に追従します（右綴じなら `←` が「次へ」）
-- **表紙を表示（Show Cover Page）**
-  - 表紙は単独表示。さらに表紙や最終ページのように片側しかない場合は、中央ではなく綴じ側に寄せて配置します（Acrobat と同じ見え方）
-- PDF 自身の設定の自動判別
-  - `/ViewerPreferences /Direction /R2L` → 右綴じ
-  - `/PageLayout /TwoPageRight` → 見開き＋表紙単独
-- 全体表示 / 幅に合わせる / 任意倍率のズーム、90 度回転
-- ファイルごとに綴じ方向・見開き設定・表示中のページを記憶
-- 日本語 PDF 向けに pdf.js の CMap を同梱（`UniJIS-UCS2-H`、`90ms-RKSJ-H` などの定義済みエンコーディングを使う PDF もそのまま表示できます）
-- ネットワークアクセスなし。pdf.js 本体・Worker・CMap はすべて `main.js` に同梱
+Obsidian's built-in PDF viewer scrolls one page at a time. BookView pairs the
+pages instead, puts them in the right order for the binding, and turns them with
+the arrow keys.
 
-## 操作
+![A vertically set Japanese book, bound on the right, with the outline panel open](screenshot/vertical-right-bound.png)
 
-| キー | 動作 |
+*A right-bound Japanese book: page 51 on the left, page 50 on the right, with the
+document's outline in the side panel.*
+
+![An English book, bound on the left](screenshot/horizontal-left-bound.png)
+
+*The same viewer on a left-bound English book, which BookView recognises on its
+own.*
+
+## Features
+
+- **Two-page spread or single page**, switchable at any time.
+- **Right-to-left or left-to-right binding.** With right-to-left binding the
+  pages run right to left: in the spread 2-3, page 2 is on the right and page 3
+  on the left, the order a Japanese book is actually printed in. The arrow keys
+  follow the binding, so `←` means "next" in a right-bound book.
+- **Show cover page.** Page 1 is shown on its own and pairing restarts at page 2
+  (2-3, 4-5, …), so page numbers land on the sides they do in print. A page with
+  no partner, such as the cover or a final page, is kept on the binding side
+  rather than centred — in a right-bound book, that puts page 1 on the left
+  half, exactly where it lands when you open the front cover.
+- **Works out the binding on its own.** `/ViewerPreferences /Direction /R2L`
+  selects right-to-left binding and `/PageLayout /TwoPageRight` selects a spread
+  with a separate cover — but hardly any PDF says either, so the binding is
+  otherwise read from the text itself: vertically set Japanese, Hebrew and Arabic
+  open right-bound, and a document with none of those opens left-bound. What
+  stays ambiguous — horizontally set Japanese, or a scan with no text at all —
+  keeps whichever default you set.
+- **Outline panel.** The document's own outline (its bookmarks) is shown as a
+  collapsible tree; clicking an entry jumps to its page, and the entry covering
+  the current page is highlighted. The panel is empty for PDFs that carry no
+  outline.
+- **Zoom and rotate.** Fit page, fit width, fixed zoom levels, 90° rotation.
+- **Per-file memory.** Binding direction, spread mode, and the current page are
+  restored the next time you open the file.
+- **CJK support built in.** The pdf.js CMap tables are bundled, so PDFs that use
+  a predefined encoding (`UniJIS-UCS2-H`, `90ms-RKSJ-H`, …) render correctly.
+- **No network access.** pdf.js, its worker, and the CMaps are all bundled into
+  `main.js`; nothing is fetched at runtime.
+
+## Usage
+
+Open any PDF in your vault. By default BookView handles `.pdf` files in place of
+the built-in viewer; you can turn that off in the settings and open individual
+files with **Open in BookView** from the file menu, or from the command palette.
+
+| Key | Action |
 | --- | --- |
-| `←` / `→` | 次／前（綴じ方向に応じて反転） |
-| `↑` `↓` `PageUp` `PageDown` `Space` | 前／次 |
-| `Home` / `End` | 最初／最後 |
-| `+` / `-` | 拡大／縮小 |
-| `0` | 全体を表示 |
-| `W` | 幅に合わせる |
-| `S` | 見開き表示の切り替え |
-| `C` | 表紙を表示の切り替え |
-| `R` | 右綴じ／左綴じの切り替え |
+| `←` / `→` | Next / previous, flipped to match the binding |
+| `↑` `↓` `PageUp` `PageDown` `Space` | Previous / next |
+| `Home` / `End` | First / last page |
+| `+` / `-` | Zoom in / out |
+| `0` | Fit page |
+| `W` | Fit width |
+| `S` | Toggle two-page spread |
+| `C` | Toggle cover page |
+| `R` | Toggle right-to-left binding |
+| `T` | Toggle the outline panel |
 
-- ホイール: ページ送り（拡大してはみ出しているときは端まで来てから送ります）
-- `Ctrl` / `Cmd` + ホイール: 拡大縮小
+- Mouse wheel turns pages. When the spread is zoomed past the edge of the
+  window, it scrolls first and turns the page once it reaches the end.
+- `Ctrl` / `Cmd` + wheel zooms.
 
-コマンドパレットからも同じ操作ができます（`BookView:` で検索）。ホットキーは Obsidian の設定で割り当てられます。
+Every action is also a command, so you can assign your own hotkeys under
+**Settings → Hotkeys**.
 
-## インストール
+## Settings
 
-コミュニティプラグインには未登録なので、手動で入れます。
+- Defaults for newly opened PDFs: spread, binding direction, cover page, zoom.
+- Whether a PDF's own layout hints override those defaults.
+- Appearance: aligning lone pages to the binding edge, the gap between the
+  halves of a spread, page shadow, colour inversion in dark mode, and render
+  quality.
+- Whether BookView handles `.pdf` files, and whether per-file state is stored.
+
+## Installation
+
+### From Obsidian
+
+**Settings → Community plugins → Browse**, search for **BookView**, install, and
+enable it.
+
+### Manually
+
+Download `main.js`, `manifest.json`, and `styles.css` from the
+[latest release](https://github.com/nonkuri/obsidian-bookview/releases/latest)
+and put them in `<vault>/.obsidian/plugins/bookview/`, then enable the plugin
+under **Settings → Community plugins**.
+
+## Limitations
+
+- There is no text layer, so text cannot be selected, copied, or searched. Pages
+  are rendered as images.
+- Links inside a page are not clickable, since annotations are not drawn. Use the
+  outline panel to move around the document.
+- PDFs embedded in notes (`![[file.pdf]]`) still use Obsidian's own rendering.
+- CJK PDFs without embedded fonts fall back to the fonts available on the
+  system.
+
+## Development
 
 ```bash
 npm install
-npm run build
+npm run dev      # esbuild in watch mode
+npm run build    # type check and production build
 ```
 
-生成された `main.js` / `manifest.json` / `styles.css` を Vault の
-`<Vault>/.obsidian/plugins/bookview/` にコピーし、Obsidian の設定 → コミュニティプラグインで有効化してください。
+`npm run deploy -- "C:/path/to/Vault"` copies the built files into a vault.
 
-コピーはスクリプトでもできます。
+### Test harness
 
-```bash
-npm run deploy -- "C:/path/to/Vault"
-```
-
-## 設定
-
-- 新しく開く PDF の既定値（見開き／右綴じ／表紙表示／ズーム）
-- PDF 自身のレイアウト指定を優先するか
-- 片側だけのページを綴じ側に寄せるか、見開きの間隔、ページの影、描画解像度
-- ダークテーマで色を反転するか
-- `.pdf` を BookView で開くか（オフにすると Obsidian 標準のビューアのままで、コマンド `Open current PDF in BookView` やファイルメニューから個別に開けます）
-- ファイルごとの状態を記憶するか
-
-## 開発
+The view can be run in a plain browser, without starting Obsidian:
 
 ```bash
-npm run dev      # esbuild の watch ビルド
-npm run build    # 型チェック + 本番ビルド
-```
-
-### 動作確認用ハーネス
-
-Obsidian を起動せずに、実物のビューをブラウザ上で動かせます。
-
-```bash
-npm run test:pdf      # test/sample.pdf を生成（5 ページ・右綴じ指定・日本語入り）
-npm run test:build    # test/harness.js をビルド
+npm run test:pdf      # generate test/sample.pdf (5 pages, right-bound, outline, Japanese text)
+npm run test:build    # build test/harness.js
 npm run test:serve    # http://localhost:4321/test/index.html
 ```
 
-`test/obsidian.ts` は Obsidian API の最小スタブで、プラグイン本体には含まれません。
+`test/obsidian.ts` is a minimal stub of the Obsidian API and is not part of the
+plugin bundle.
 
-## 制限
+## Credits and licence
 
-- テキストレイヤーがないため、本文の選択・コピー・検索はできません（描画のみ）。
-- Markdown 内の埋め込み（`![[file.pdf]]`）は Obsidian 標準の描画のままです。
-- 埋め込みフォントのない CJK PDF は、環境のフォントで代替描画されます。
+MIT — see [LICENSE](LICENSE).
 
-## ライセンス
-
-MIT. pdf.js（Apache License 2.0）を同梱しています。
+Bundles [pdf.js](https://github.com/mozilla/pdf.js) by the Mozilla Foundation,
+under the Apache License 2.0. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

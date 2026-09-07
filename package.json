@@ -12,7 +12,8 @@
     "test:build": "node test/build-harness.mjs",
     "test:serve": "node test/serve.mjs",
     "test:registry": "node test/registry-test.mjs",
-    "test": "node test/registry-test.mjs"
+    "test": "node test/registry-test.mjs",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "keywords": [
     "obsidian",

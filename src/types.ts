@@ -12,7 +12,7 @@ export interface DocState {
    * and pairing starts at page 2 (2-3, 4-5, ...).
    */
   cover: boolean;
-  /** Right-to-left binding (右綴じ) — page 1 sits on the right of the spread. */
+  /** Right-to-left binding: pages are paired right to left, as in a Japanese book. */
   rtl: boolean;
   fit: FitMode;
   /** Only meaningful when `fit === "custom"`. */

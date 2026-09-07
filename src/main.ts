@@ -34,7 +34,7 @@ export default class BookViewPlugin extends Plugin {
 
     this.addCommand({
       id: "open-in-bookview",
-      name: "Open current PDF in BookView (この PDF を BookView で開く)",
+      name: "Open current PDF in a book view",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension.toLowerCase() !== "pdf") return false;
@@ -44,31 +44,26 @@ export default class BookViewPlugin extends Plugin {
       },
     });
 
-    this.addViewCommand("toggle-spread", "Toggle two-page spread (見開き表示の切り替え)", (v) =>
-      v.toggleSpread()
-    );
-    this.addViewCommand("toggle-rtl", "Toggle right-to-left binding (右綴じ／左綴じの切り替え)", (v) =>
-      v.toggleRtl()
-    );
-    this.addViewCommand("toggle-cover", "Toggle cover page (表紙を単独表示するかの切り替え)", (v) =>
-      v.toggleCover()
-    );
-    this.addViewCommand("next-page", "Next page / spread (次のページへ)", (v) => v.turn(1));
-    this.addViewCommand("prev-page", "Previous page / spread (前のページへ)", (v) => v.turn(-1));
-    this.addViewCommand("first-page", "First page (最初のページへ)", (v) => v.goToEdge("first"));
-    this.addViewCommand("last-page", "Last page (最後のページへ)", (v) => v.goToEdge("last"));
-    this.addViewCommand("fit-page", "Fit page (全体を表示)", (v) => v.setFit("page"));
-    this.addViewCommand("fit-width", "Fit width (幅に合わせる)", (v) => v.setFit("width"));
-    this.addViewCommand("zoom-in", "Zoom in (拡大)", (v) => v.stepZoom(1));
-    this.addViewCommand("zoom-out", "Zoom out (縮小)", (v) => v.stepZoom(-1));
-    this.addViewCommand("rotate", "Rotate clockwise (右に回転)", (v) => v.rotate(90));
+    this.addViewCommand("toggle-spread", "Toggle two-page spread", (v) => v.toggleSpread());
+    this.addViewCommand("toggle-rtl", "Toggle right-to-left binding", (v) => v.toggleRtl());
+    this.addViewCommand("toggle-cover", "Toggle cover page", (v) => v.toggleCover());
+    this.addViewCommand("toggle-outline", "Toggle outline", (v) => void v.toggleOutline());
+    this.addViewCommand("next-page", "Next page or spread", (v) => v.turn(1));
+    this.addViewCommand("prev-page", "Previous page or spread", (v) => v.turn(-1));
+    this.addViewCommand("first-page", "Go to first page", (v) => v.goToEdge("first"));
+    this.addViewCommand("last-page", "Go to last page", (v) => v.goToEdge("last"));
+    this.addViewCommand("fit-page", "Fit page", (v) => v.setFit("page"));
+    this.addViewCommand("fit-width", "Fit width", (v) => v.setFit("width"));
+    this.addViewCommand("zoom-in", "Zoom in", (v) => v.stepZoom(1));
+    this.addViewCommand("zoom-out", "Zoom out", (v) => v.stepZoom(-1));
+    this.addViewCommand("rotate", "Rotate clockwise", (v) => v.rotate(90));
 
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || file.extension.toLowerCase() !== "pdf") return;
         menu.addItem((item) =>
           item
-            .setTitle("BookView で開く")
+            .setTitle("Open in BookView")
             .setIcon("book-open")
             .onClick(() => void this.openInBookView(file, true))
         );
@@ -173,7 +168,9 @@ export default class BookViewPlugin extends Plugin {
     if (this.extensionRegistered) return;
     const registry = this.viewRegistry();
     if (!registry) {
-      new Notice("BookView: PDF の関連付けができませんでした（Obsidian の内部 API が変わった可能性があります）。");
+      new Notice(
+        "BookView could not take over PDF files. Open them from the file menu instead, or turn the setting off."
+      );
       return;
     }
     const current = registry.getTypeByExtension("pdf");
@@ -189,7 +186,7 @@ export default class BookViewPlugin extends Plugin {
       this.extensionRegistered = true;
     } catch (err) {
       console.error("BookView: could not claim the .pdf extension", err);
-      new Notice("BookView: PDF の関連付けに失敗しました。コンソールを確認してください。");
+      new Notice("BookView could not take over PDF files. See the console for details.");
     }
   }
 
@@ -220,7 +217,7 @@ export default class BookViewPlugin extends Plugin {
       state: { file: file.path },
       active: true,
     });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   private addViewCommand(id: string, name: string, run: (view: BookPdfView) => void): void {

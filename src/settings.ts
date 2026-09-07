@@ -52,11 +52,11 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Page layout")
-      .setDesc("見開き（2ページ）表示か、単ページ表示か。")
+      .setDesc("Show two pages side by side, or a single page at a time.")
       .addDropdown((d) =>
         d
-          .addOption("spread", "見開き / Two-page spread")
-          .addOption("single", "単ページ / Single page")
+          .addOption("spread", "Two-page spread")
+          .addOption("single", "Single page")
           .setValue(this.plugin.settings.defaultSpread)
           .onChange(async (v) => {
             this.plugin.settings.defaultSpread = v as SpreadMode;
@@ -65,8 +65,8 @@ export class BookViewSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Right-to-left binding (右綴じ)")
-      .setDesc("縦書きの日本語書籍のように、1ページ目を右側に置きます。")
+      .setName("Right-to-left binding")
+      .setDesc("Pair pages from right to left, the way vertically written Japanese books are bound.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.defaultRtl).onChange(async (v) => {
           this.plugin.settings.defaultRtl = v;
@@ -75,9 +75,9 @@ export class BookViewSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Show cover page (表紙を表示)")
+      .setName("Show cover page")
       .setDesc(
-        "Acrobat Reader と同じ挙動です。1ページ目（表紙）だけを単独で表示し、2ページ目以降を 2-3、4-5 … と見開きにします。"
+        "Show page 1 on its own and pair the rest as 2-3, 4-5, and so on, like the cover page option in Acrobat Reader."
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.defaultCover).onChange(async (v) => {
@@ -88,11 +88,11 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Zoom mode")
-      .setDesc("開いたときの拡大率の決め方。")
+      .setDesc("How the zoom level is chosen when a document is opened.")
       .addDropdown((d) =>
         d
-          .addOption("page", "全体を表示 / Fit page")
-          .addOption("width", "幅に合わせる / Fit width")
+          .addOption("page", "Fit page")
+          .addOption("width", "Fit width")
           .setValue(this.plugin.settings.defaultFit === "width" ? "width" : "page")
           .onChange(async (v) => {
             this.plugin.settings.defaultFit = v as FitMode;
@@ -103,8 +103,12 @@ export class BookViewSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Detect layout from the PDF")
       .setDesc(
-        "PDF 自身が綴じ方向（/ViewerPreferences /Direction）や見開き（/PageLayout の TwoPage…／TwoColumn…）を指定していれば、それを上記の既定値より優先します。" +
-          "単ページ指定（SinglePage・OneColumn）はほぼすべての PDF が既定で書き込むだけの値なので無視します。"
+        "Let a PDF that states its own binding direction (/ViewerPreferences /Direction) or spread " +
+          "(/PageLayout TwoPage… or TwoColumn…) override the defaults above. Single-page hints " +
+          "(SinglePage, OneColumn) are ignored, because nearly every PDF writes one by default. " +
+          "Hardly any PDF states a direction, so the binding is otherwise guessed from the text: " +
+          "vertically set Japanese, Hebrew and Arabic open right-bound, and a document with none of " +
+          "those opens left-bound. Horizontal Japanese and scans keep the default above."
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.autoDetect).onChange(async (v) => {
@@ -118,7 +122,8 @@ export class BookViewSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Align lone pages to the binding edge")
       .setDesc(
-        "表紙や最終ページのように片側しかないときに、中央ではなく綴じ側に寄せて配置します（Acrobat と同じ見え方）。"
+        "When a spread holds only one page, such as the cover or a final page, keep it on the binding " +
+          "side instead of centring it, the way Acrobat Reader does."
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.alignSinglePages).onChange(async (v) => {
@@ -130,7 +135,7 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Spread gap")
-      .setDesc("見開きの左右ページの間隔（ピクセル）。")
+      .setDesc("Space between the left and right halves of a spread, in pixels.")
       .addSlider((s) =>
         s
           .setLimits(0, 48, 1)
@@ -145,7 +150,7 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Page shadow")
-      .setDesc("ページの縁に影を付けます。")
+      .setDesc("Draw a drop shadow around the edge of each page.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.pageShadow).onChange(async (v) => {
           this.plugin.settings.pageShadow = v;
@@ -155,8 +160,8 @@ export class BookViewSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Invert colours in dark mode")
-      .setDesc("ダークテーマのときに PDF の色を反転して表示します（白地の文書向け）。")
+      .setName("Invert colors in dark mode")
+      .setDesc("Invert the colors of the rendered page under a dark theme. Suits documents on white.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.invertInDarkMode).onChange(async (v) => {
           this.plugin.settings.invertInDarkMode = v;
@@ -168,7 +173,8 @@ export class BookViewSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Render quality")
       .setDesc(
-        "描画に使う解像度の上限（画面の devicePixelRatio に対する倍率）。大きいほど綺麗ですが重くなります。"
+        "Upper bound on the rendering resolution, as a multiple of the screen pixel ratio. " +
+          "Higher is sharper but slower."
       )
       .addSlider((s) =>
         s
@@ -182,12 +188,13 @@ export class BookViewSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName("Behaviour").setHeading();
+    new Setting(containerEl).setName("Behavior").setHeading();
 
     new Setting(containerEl)
-      .setName("Use BookView for .pdf files")
+      .setName("Open PDF files in BookView")
       .setDesc(
-        "Vault 内の PDF を、Obsidian 標準のビューアではなく BookView で開きます。オフにすると、コマンド「Open in BookView」やファイルメニューから個別に開けます。"
+        "Use BookView instead of the built-in viewer for PDFs in this vault. When off, open a PDF in " +
+          "BookView one at a time from the file menu or from the command palette."
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.overridePdfViewer).onChange(async (v) => {
@@ -199,7 +206,10 @@ export class BookViewSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Remember settings per file")
-      .setDesc("ファイルごとに綴じ方向・見開き・表示ページを記憶し、次回開いたときに復元します。")
+      .setDesc(
+        "Store the binding direction, spread mode, and current page for each file, and restore them " +
+          "the next time it is opened."
+      )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.rememberPerFile).onChange(async (v) => {
           this.plugin.settings.rememberPerFile = v;
@@ -210,10 +220,10 @@ export class BookViewSettingTab extends PluginSettingTab {
     const remembered = Object.keys(this.plugin.settings.fileStates).length;
     new Setting(containerEl)
       .setName("Clear remembered files")
-      .setDesc(`記憶済み: ${remembered} ファイル`)
+      .setDesc(`Currently remembering ${remembered} file${remembered === 1 ? "" : "s"}.`)
       .addButton((b) =>
         b
-          .setButtonText("消去 / Clear")
+          .setButtonText("Clear")
           .setWarning()
           .setDisabled(remembered === 0)
           .onClick(async () => {
