@@ -19,6 +19,9 @@ const settings = {
   epubStates: {} as Record<string, EpubState>,
 };
 
+/** Every view the harness has built, for `refreshOpenViews` to walk. */
+const views: FileView[] = [];
+
 const fakePlugin = {
   settings,
   defaultDocState(): DocState {
@@ -43,6 +46,15 @@ const fakePlugin = {
   getFileState: () => null,
   saveFileState: () => undefined,
   getEpubState: () => null,
+  // The toolbar's margin sliders go through both of these, so the harness has
+  // to carry them or the panel does nothing here and everything in Obsidian.
+  saveSettings: async () => undefined,
+  refreshOpenViews: () => {
+    for (const view of views) {
+      if (view instanceof BookEpubView && view.hasBook()) view.refreshLayout();
+      else if (view instanceof BookPdfView && view.hasDocument()) view.setFit(view.getDocState().fit);
+    }
+  },
   // Kept, rather than dropped, so the driver can watch the position advance.
   saveEpubState: (path: string, state: EpubState) => {
     settings.epubStates[path] = { ...state };
@@ -74,6 +86,7 @@ async function main() {
     workspace: { on: () => ({}), offref: () => undefined },
   } as never;
 
+  views.push(view);
   host.appendChild(view.containerEl);
   await view.onOpen();
   await (view as unknown as LoadableView).loadFileForTest(

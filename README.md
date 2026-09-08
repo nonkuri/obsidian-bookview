@@ -59,6 +59,11 @@ in the file explorer. BookView reads both reflowable and fixed-layout books.
 - **Two columns side by side** for horizontally set books. Vertical text already
   runs right to left across the full width, which is the spread.
 - **Type size, and paginated or scrolled reading**, switchable at any time.
+- **The page laid out to taste.** Margins, line length, line spacing and the gap
+  between columns. The margins are on the toolbar as well as in the settings, so
+  the page reflows under you as you find the right amount of white — the setting
+  that matters most to a vertically set book, which fills a wide pane quite
+  differently from a horizontal one.
 
 ### Both
 
@@ -121,6 +126,10 @@ BookView*) and reach BookView only when you want it.
 - The mouse wheel turns pages, and a sideways wheel follows the binding. In
   scrolled reading it is left alone to scroll.
 - `Ctrl` / `Cmd` + wheel changes the type size.
+- The margins button on the toolbar sets the space kept clear around the text,
+  top and bottom and at the sides, and the page reflows as you drag. The same
+  two sliders are in the settings tab; both write the one setting, so every
+  open book follows.
 
 If a book opens but does not appear, the command **Copy EPUB diagnostics** puts
 the renderer's measurements on the clipboard, ready to paste into a bug report.
@@ -136,8 +145,9 @@ Every action is also a command, so you can assign your own hotkeys under
   halves of a spread, page shadow, colour inversion in dark mode, and render
   quality.
 - Defaults for newly opened EPUBs: paginated or scrolled, two columns, type
-  size, line length, body width in vertical writing, line spacing, and the gap
-  between columns.
+  size, line length, body height and width in vertical writing, line spacing,
+  the gap between columns, and the margins kept at the top and bottom and at
+  the sides.
 - Whether BookView handles `.pdf` and `.epub` files, and whether per-file state
   is stored.
 

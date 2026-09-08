@@ -124,6 +124,9 @@ export default class BookViewPlugin extends Plugin {
     this.addEpubCommand("epub-toggle-columns", "Toggle two columns", (v) =>
       v.setColumns(v.getEpubState().columns > 1 ? 1 : 2)
     );
+    this.addEpubCommand("epub-toggle-margins", "Toggle the margins panel", (v) =>
+      v.toggleMarginPanel()
+    );
 
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
@@ -179,6 +182,15 @@ export default class BookViewPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const stored = (await this.loadData()) as Partial<BookViewSettings> | null;
     this.settings = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+    // 1.1.1 capped the text at 1440px across the stacking direction, which on a
+    // wide pane leaves a band of white the EPUB margins cannot reach into: the
+    // renderer centres what it has capped, and the leftover is the wider of the
+    // two. Anyone still carrying that exact number is carrying the old default,
+    // so it moves to the new one; a width deliberately set to anything else is
+    // left alone.
+    if (stored?.epubMaxBlockSize === 1440) {
+      this.settings.epubMaxBlockSize = DEFAULT_SETTINGS.epubMaxBlockSize;
+    }
     if (!this.settings.fileStates || typeof this.settings.fileStates !== "object") {
       this.settings.fileStates = {};
     }

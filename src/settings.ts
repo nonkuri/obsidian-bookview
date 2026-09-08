@@ -2,6 +2,12 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type BookViewPlugin from "./main";
 import type { DocState, EpubState, FitMode, FlowMode, SpreadMode } from "./types";
 
+/** Upper end of both EPUB margin sliders, on the toolbar and in the settings tab. */
+export const EPUB_MARGIN_MAX = 400;
+
+/** Step both margin sliders move in, in pixels. */
+export const EPUB_MARGIN_STEP = 4;
+
 export interface BookViewSettings {
   defaultSpread: SpreadMode;
   defaultCover: boolean;
@@ -35,14 +41,38 @@ export interface BookViewSettings {
   defaultFontScale: number;
   /** Space between columns, as a percentage of the page. */
   epubGap: number;
-  /** Cap on the measure, in pixels, so a wide pane does not produce unreadable lines. */
+  /**
+   * Cap on the measure of a horizontally set book, in pixels, so a wide pane
+   * does not produce unreadable lines. A vertically set book measures its lines
+   * down the page instead, and is capped by {@link epubMaxVerticalHeight}.
+   */
   epubMaxLineLength: number;
   /**
+   * The same cap for a vertically set book, where the measure is the height of
+   * the text. Kept apart from {@link epubMaxLineLength} because the two are the
+   * same number read against different edges of the screen: a pane is far
+   * shorter than it is wide, so a measure that leaves a horizontal book
+   * readable leaves a vertical one floating in white.
+   */
+  epubMaxVerticalHeight: number;
+  /**
    * Cap on the text area in the direction the lines stack, in pixels: the width
-   * of a vertically set book, the height of a horizontal one.
+   * of a vertically set book, the height of a horizontal one. Starts wider than
+   * any pane, so that the margins below are what decides the white space; a
+   * limit narrower than the pane takes over from them, because the renderer
+   * centres what it has capped and the leftover swallows the margin whole.
    */
   epubMaxBlockSize: number;
   epubLineHeight: number;
+  /**
+   * Space kept clear at the top and bottom edges of the pane, in pixels. Both
+   * this and {@link epubHorizontalMargin} are physical edges of the pane, not
+   * the book's own margins, so they mean the same thing however the book is set.
+   * A margin is a floor: whatever the limits above leave over is added to it.
+   */
+  epubVerticalMargin: number;
+  /** Space kept clear at the left and right edges of the pane, in pixels. */
+  epubHorizontalMargin: number;
   epubStates: Record<string, EpubState>;
 }
 
@@ -67,8 +97,11 @@ export const DEFAULT_SETTINGS: BookViewSettings = {
   defaultFontScale: 100,
   epubGap: 6,
   epubMaxLineLength: 720,
-  epubMaxBlockSize: 1440,
+  epubMaxVerticalHeight: 2400,
+  epubMaxBlockSize: 4000,
   epubLineHeight: 1.7,
+  epubVerticalMargin: 24,
+  epubHorizontalMargin: 0,
   epubStates: {},
 };
 
@@ -269,14 +302,34 @@ export class BookViewSettingTab extends PluginSettingTab {
       .setName("Line length")
       .setDesc(
         "Upper bound on the measure, in pixels. Without one, a wide pane produces lines too long " +
-          "to read comfortably."
+          "to read comfortably. Horizontal writing only — a vertically set book measures its " +
+          "lines down the page, and has a setting of its own below."
       )
       .addSlider((s) =>
         s
-          .setLimits(400, 1200, 20)
+          .setLimits(400, 1600, 20)
           .setValue(this.plugin.settings.epubMaxLineLength)
           .onChange(async (v) => {
             this.plugin.settings.epubMaxLineLength = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Body height in vertical writing")
+      .setDesc(
+        "The same upper bound for a vertically set book, where a line runs down the page rather " +
+          "than across it, so this is how tall the text block is allowed to be. At the top of the " +
+          "range it stops constraining anything on any screen, which is where it starts: a page of " +
+          "a Japanese book runs to the foot of the page."
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(400, 3200, 20)
+          .setValue(this.plugin.settings.epubMaxVerticalHeight)
+          .onChange(async (v) => {
+            this.plugin.settings.epubMaxVerticalHeight = v;
             await this.plugin.saveSettings();
             this.plugin.refreshOpenViews();
           })
@@ -287,12 +340,14 @@ export class BookViewSettingTab extends PluginSettingTab {
       .setDesc(
         "How far the text runs across the page in a vertically set book. A horizontally set one " +
           "is unaffected in width — there the same limit caps the height instead, because it bounds " +
-          "the direction the lines stack. At the top of the range it stops constraining anything on " +
-          "most screens."
+          "the direction the lines stack. It starts at the top of the range, wider than any pane, " +
+          "so that the margins below are what decides the white space. Bring it down and it takes " +
+          "over from them: the renderer centres the text it has narrowed, and that leftover is " +
+          "wider than the margin."
       )
       .addSlider((s) =>
         s
-          .setLimits(800, 3000, 40)
+          .setLimits(800, 4000, 40)
           .setValue(this.plugin.settings.epubMaxBlockSize)
           .onChange(async (v) => {
             this.plugin.settings.epubMaxBlockSize = v;
@@ -324,6 +379,40 @@ export class BookViewSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.epubGap)
           .onChange(async (v) => {
             this.plugin.settings.epubGap = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Top and bottom margin")
+      .setDesc(
+        "Space kept clear above and below the text, in pixels. Also on the toolbar, under the " +
+          "margins button. This is a floor: whatever the limits above leave over is added to it."
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(0, EPUB_MARGIN_MAX, EPUB_MARGIN_STEP)
+          .setValue(this.plugin.settings.epubVerticalMargin)
+          .onChange(async (v) => {
+            this.plugin.settings.epubVerticalMargin = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Left and right margin")
+      .setDesc(
+        "Space kept clear at the sides of the text, in pixels, on top of what the column gap " +
+          "already leaves. Also on the toolbar, under the margins button."
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(0, EPUB_MARGIN_MAX, EPUB_MARGIN_STEP)
+          .setValue(this.plugin.settings.epubHorizontalMargin)
+          .onChange(async (v) => {
+            this.plugin.settings.epubHorizontalMargin = v;
             await this.plugin.saveSettings();
             this.plugin.refreshOpenViews();
           })

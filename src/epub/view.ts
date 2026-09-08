@@ -2,6 +2,7 @@ import { FileView, Menu, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsid
 import type { ViewStateResult } from "obsidian";
 import type BookViewPlugin from "../main";
 import type { EpubState, FlowMode } from "../types";
+import { EPUB_MARGIN_MAX, EPUB_MARGIN_STEP } from "../settings";
 import { openEpub } from "./loader";
 import "../vendor/foliate/view.js";
 import type { Book, LoadDetail, RelocateDetail, TOCItem, View } from "../vendor/foliate/view";
@@ -45,7 +46,13 @@ export class BookEpubView extends FileView {
   private fontLabel!: HTMLElement;
   private flowBtn!: HTMLElement;
   private columnsBtn!: HTMLElement;
+  private marginBtn!: HTMLElement;
+  private marginPanelEl!: HTMLElement;
   private outlineBtn!: HTMLElement;
+
+  private marginPanelOpen = false;
+  /** Pulls each margin slider back into line with the setting behind it. */
+  private marginSync: (() => void)[] = [];
 
   private outlineVisible = false;
   /** Maps each TOC entry to its row, so `relocate` can highlight it. */
@@ -207,6 +214,10 @@ export class BookEpubView extends FileView {
       const vertical = mode.startsWith("vertical") || mode.startsWith("sideways");
       if (vertical !== this.vertical) {
         this.vertical = vertical;
+        // The measure is capped against a different edge of the screen now, so
+        // the layout has to be pushed again. Only on a change, so this cannot
+        // loop: re-laying out repaginates the section, it does not reload it.
+        this.applyLayout();
         this.updateToolbar();
       }
     });
@@ -271,6 +282,17 @@ export class BookEpubView extends FileView {
     this.registerDomEvent(this.outlineEl, "click", (evt) => this.onOutlineClick(evt));
     this.registerDomEvent(this.outlineEl, "keydown", (evt) => this.onOutlineKeyDown(evt));
     this.registerDomEvent(this.stageEl, "keydown", (evt) => this.onKeyDown(evt));
+    // A click anywhere else dismisses the margins panel. The button's own
+    // handler has already run by the time this one sees the event, so a click
+    // on the button reads as inside and leaves the toggle it just did alone.
+    this.registerDomEvent(container.ownerDocument, "click", (evt) => {
+      if (!this.marginPanelOpen) return;
+      const target = evt.target as Node | null;
+      if (target && (this.marginPanelEl.contains(target) || this.marginBtn.contains(target))) {
+        return;
+      }
+      this.setMarginPanelOpen(false);
+    });
     this.registerDomEvent(this.stageEl, "wheel", (evt) => this.onWheel(evt), { passive: false });
 
     // The book's own light or dark rendering is pinned to the vault's theme, so
@@ -292,6 +314,8 @@ export class BookEpubView extends FileView {
     this.columnsBtn = this.makeButton(layout, "columns-2", "Two columns", () =>
       this.setColumns(this.state.columns > 1 ? 1 : 2)
     );
+    this.marginBtn = this.makeButton(layout, "crop", "Margins", () => this.toggleMarginPanel());
+    this.marginPanelEl = this.buildMarginPanel(layout);
 
     const spacer = this.toolbarEl.createDiv({ cls: "bookview-toolbar-spacer" });
     spacer.setAttr("aria-hidden", "true");
@@ -320,6 +344,87 @@ export class BookEpubView extends FileView {
     return btn;
   }
 
+  /**
+   * The margins again, on the toolbar. What they should be depends on the book
+   * and on how wide the pane happens to be right now, which is a judgement made
+   * while reading and not one worth a trip to the settings tab. Both places
+   * write the same setting, so every open book follows.
+   */
+  private buildMarginPanel(parent: HTMLElement): HTMLElement {
+    const panel = parent.createDiv({ cls: "bookview-margin-panel" });
+    panel.hide();
+    this.makeMarginSlider(
+      panel,
+      "Top and bottom",
+      () => this.plugin.settings.epubVerticalMargin,
+      (v) => (this.plugin.settings.epubVerticalMargin = v)
+    );
+    this.makeMarginSlider(
+      panel,
+      "Left and right",
+      () => this.plugin.settings.epubHorizontalMargin,
+      (v) => (this.plugin.settings.epubHorizontalMargin = v)
+    );
+    // Escape closes it, and puts the focus back where it can turn pages.
+    this.registerDomEvent(panel, "keydown", (evt) => {
+      if (evt.key !== "Escape") return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.setMarginPanelOpen(false);
+    });
+    return panel;
+  }
+
+  private makeMarginSlider(
+    parent: HTMLElement,
+    label: string,
+    get: () => number,
+    set: (value: number) => void
+  ): void {
+    const row = parent.createDiv({ cls: "bookview-margin-row" });
+    row.createSpan({ cls: "bookview-margin-label", text: label });
+    // `slider` is Obsidian's own class for a range input, so this is the same
+    // control the settings tab draws.
+    const slider = row.createEl("input", { cls: "slider bookview-margin-slider" });
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = String(EPUB_MARGIN_MAX);
+    slider.step = String(EPUB_MARGIN_STEP);
+    slider.setAttr("aria-label", label + " margin");
+    const readout = row.createSpan({ cls: "bookview-margin-value" });
+
+    const sync = () => {
+      slider.value = String(get());
+      readout.setText(get() + " px");
+    };
+    sync();
+    this.marginSync.push(sync);
+
+    // Dragging re-lays out every open book as it goes; the setting is only
+    // written once the drag ends, rather than at every pixel along the way.
+    this.registerDomEvent(slider, "input", () => {
+      set(Number(slider.value));
+      readout.setText(slider.value + " px");
+      this.plugin.refreshOpenViews();
+    });
+    this.registerDomEvent(slider, "change", () => void this.plugin.saveSettings());
+  }
+
+  /** The toolbar button's action, and the command palette's way to the same. */
+  toggleMarginPanel(): void {
+    this.setMarginPanelOpen(!this.marginPanelOpen);
+  }
+
+  private setMarginPanelOpen(open: boolean): void {
+    this.marginPanelOpen = open;
+    // The settings tab writes the same numbers, so the sliders are only true
+    // as of the moment the panel opens.
+    if (open) for (const sync of this.marginSync) sync();
+    if (open) this.marginPanelEl.show();
+    else this.marginPanelEl.hide();
+    this.marginBtn.toggleClass("is-active", open);
+  }
+
   private showMessage(text: string): void {
     this.messageEl.setText(text);
     this.messageEl.show();
@@ -339,16 +444,45 @@ export class BookEpubView extends FileView {
     const renderer = reader.renderer;
     renderer.setAttribute("flow", this.state.flow);
     renderer.setAttribute("gap", this.plugin.settings.epubGap + "%");
-    renderer.setAttribute("margin", "24px");
+    renderer.setAttribute("margin", this.plugin.settings.epubVerticalMargin + "px");
     renderer.setAttribute("max-column-count", String(this.state.columns));
-    renderer.setAttribute("max-inline-size", this.plugin.settings.epubMaxLineLength + "px");
+    renderer.setAttribute("max-inline-size", this.maxMeasure() + "px");
     renderer.setAttribute("max-block-size", this.plugin.settings.epubMaxBlockSize + "px");
     renderer.setStyles?.(this.bookStyles());
+    this.applySideMargin(reader);
 
     this.stageEl.toggleClass(
       "is-inverted",
       this.isDarkTheme() && this.plugin.settings.invertInDarkMode
     );
+  }
+
+  /**
+   * The cap on the measure: the width of a column in a horizontally set book,
+   * the height of the text in a vertically set one. One attribute, but two
+   * readings of it far enough apart that each writing mode keeps its own
+   * setting — a pane is much wider than it is tall, so the number that leaves a
+   * horizontal book readable leaves a vertical one stranded in white.
+   */
+  private maxMeasure(): number {
+    const settings = this.plugin.settings;
+    return this.vertical ? settings.epubMaxVerticalHeight : settings.epubMaxLineLength;
+  }
+
+  /**
+   * Insets the renderer itself, which is how the left and right margins are
+   * kept: the paginator has an attribute for the top and bottom margin but
+   * none for the sides, where it leaves whatever the column gap works out to.
+   * The paginator sizes itself from its own content box and re-paginates when
+   * that box changes, so padding on it is simply a smaller page.
+   *
+   * A fixed-layout book is drawn by a different renderer, one that is not
+   * box-sized for this and would only overflow, so it is left alone.
+   */
+  private applySideMargin(reader: View): void {
+    const margin = reader.isFixedLayout ? 0 : this.plugin.settings.epubHorizontalMargin;
+    reader.renderer.style.paddingLeft = margin + "px";
+    reader.renderer.style.paddingRight = margin + "px";
   }
 
   /**
